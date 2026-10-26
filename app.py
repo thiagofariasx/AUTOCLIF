@@ -7,69 +7,59 @@ import numpy as np
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from flask import Flask, render_template, jsonify, Response
-from autoclif_main import (
-    configurar_driver, 
-    realizar_login, 
-    rotina_bloqueados, 
-    PLANILHA_URL, 
-    CHAVE_JSON, 
-    DOWNLOAD_PATH, 
-    limpar_pasta_downloads
-)
-from selenium.webdriver.support.ui import WebDriverWait
 
 app = Flask(__name__)
 
-def ler_bloqueados_google_sheets():
+# Tenta pegar as credenciais da Variável de Ambiente (Nuvem) ou do arquivo local
+CHAVE_JSON = "chave_google.json"
+PLANILHA_URL = "SUA_URL_DO_GOOGLE_SHEETS_AQUI"  # <-- Coloque sua URL do Google Sheets aqui
+
+def conectar_google_sheets():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name(CHAVE_JSON, scope)
-    client = gspread.authorize(creds)
-    sheet = client.open_by_url(PLANILHA_URL).worksheet("bloqueados")
     
-    # ESTRATÉGIA NOVE: Lê diretamente Z1 e faz fallback seguro em M1 caso Z1 esteja vazia
-    data_atualizacao = ""
-    try:
-        val_z1 = sheet.acell('Z1').value
-        if val_z1 and 'Unnamed' not in str(val_z1):
-            data_atualizacao = str(val_z1).strip()
-        else:
-            val_m1 = sheet.acell('M1').value
-            if val_m1 and 'Unnamed' not in str(val_m1):
-                data_atualizacao = str(val_m1).strip()
-    except Exception as e:
-        print(f"⚠️ Aviso na leitura de célula de atualização: {e}")
-
-    # Garante filtragem de qualquer ocorrência indesejada
-    if 'Unnamed' in data_atualizacao:
-        data_atualizacao = ""
-
-    data = sheet.get_all_values()
-    if not data or len(data) <= 1:
-        return pd.DataFrame(), data_atualizacao
-    
-    header_idx = 0
-    for idx, row in enumerate(data[:5]):
-        if any('Cliente' in str(cell) or 'Produto' in str(cell) for cell in row):
-            header_idx = idx
-            break
-
-    df = pd.DataFrame(data[header_idx + 1:], columns=data[header_idx])
-    return df, data_atualizacao
-
-def gravar_data_atualizacao_na_planilha():
-    try:
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    # Se estiver no Render (env var)
+    creds_json_env = os.environ.get("GOOGLE_CREDENTIALS_JSON")
+    if creds_json_env:
+        creds_dict = json.loads(creds_json_env)
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    else:
+        # Execução local
         creds = ServiceAccountCredentials.from_json_keyfile_name(CHAVE_JSON, scope)
-        client = gspread.authorize(creds)
-        sheet = client.open_by_url(PLANILHA_URL).worksheet("bloqueados")
         
-        agora_str = f"Atualizado em: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
-        sheet.update_acell('Z1', agora_str)
-        sheet.update_acell('M1', agora_str)
-        return agora_str
+    client = gspread.authorize(creds)
+    return client.open_by_url(PLANILHA_URL).worksheet("bloqueados")
+
+def ler_bloqueados_google_sheets():
+    try:
+        sheet = conectar_google_sheets()
+        
+        data_atualizacao = ""
+        try:
+            val_z1 = sheet.acell('Z1').value
+            if val_z1 and 'Unnamed' not in str(val_z1):
+                data_atualizacao = str(val_z1).strip()
+            else:
+                val_m1 = sheet.acell('M1').value
+                if val_m1 and 'Unnamed' not in str(val_m1):
+                    data_atualizacao = str(val_m1).strip()
+        except Exception:
+            pass
+
+        data = sheet.get_all_values()
+        if not data or len(data) <= 1:
+            return pd.DataFrame(), data_atualizacao
+        
+        header_idx = 0
+        for idx, row in enumerate(data[:5]):
+            if any('Cliente' in str(cell) or 'Produto' in str(cell) for cell in row):
+                header_idx = idx
+                break
+
+        df = pd.DataFrame(data[header_idx + 1:], columns=data[header_idx])
+        return df, data_atualizacao
     except Exception as e:
-        print(f"Erro ao gravar data na planilha: {e}")
-        return f"Atualizado em: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
+        print(f"Erro ao ler sheets: {e}")
+        return pd.DataFrame(), ""
 
 @app.route('/')
 def index():
@@ -131,36 +121,40 @@ def get_kpi_bloqueados():
         print(f"❌ ERRO API KPI: {str(e)}")
         return jsonify({"status": "error", "message": str(e)})
 
+# ROTA DA NUVEM: Grava 'PENDENTE' na Z2 do Google Sheets para o Agente Local executar
 @app.route('/stream/atualizar/bloqueados')
 def stream_bloqueados():
     def generate():
         def send_log(msg, pct):
             return f"data: {json.dumps({'message': msg, 'pct': pct})}\n\n"
 
-        yield send_log("⚙️ Inicializando automação...", 10)
-        limpar_pasta_downloads()
-        
+        yield send_log("📡 Solicitando atualização ao Agente Local no Brasil...", 20)
         try:
-            driver = configurar_driver()
-            wait = WebDriverWait(driver, 45)
+            sheet = conectar_google_sheets()
+            sheet.update_acell('Z2', 'PENDENTE')
             
-            yield send_log("🔐 Efetuando login no CLIF...", 30)
-            realizar_login(driver, wait)
-            
-            yield send_log("📦 Baixando relatório de Bloqueados...", 65)
-            rotina_bloqueados(driver, wait)
-            driver.quit()
+            # Fica monitorando a célula Z2 até o Agente Local terminar
+            tentativas = 0
+            while tentativas < 60: # Aguarda até 3 minutos
+                time.sleep(3)
+                tentativas += 1
+                status = sheet.acell('Z2').value
+                
+                if status == 'EM_ANDAMENTO':
+                    yield send_log("🔐 Agente local conectado no CLIF... processando", 50)
+                elif status == 'CONCLUIDO':
+                    yield send_log("✅ Concluído! Base 100% atualizada.", 100)
+                    return
+                elif status and 'ERRO' in status:
+                    yield send_log(f"❌ {status}", -1)
+                    return
 
-            yield send_log("📊 Atualizando inteligência no Google Sheets...", 90)
-            agora_fmt = gravar_data_atualizacao_na_planilha()
-            time.sleep(1)
-
-            yield send_log("✅ Concluído! Base 100% atualizada.", 100)
-
+            yield send_log("⚠️ Agente local não respondeu a tempo.", -1)
         except Exception as e:
             yield send_log(f"❌ Erro: {str(e)}", -1)
 
     return Response(generate(), mimetype='text/event-stream')
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
