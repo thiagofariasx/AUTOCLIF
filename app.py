@@ -122,36 +122,47 @@ def get_kpi_bloqueados():
         return jsonify({"status": "error", "message": str(e)})
 
 # ROTA DA NUVEM: Grava 'PENDENTE' na célula Z2 do Google Sheets para o Agente Local executar
+# ROTA DA NUVEM: Transmite os logs e a porcentagem real do Agente Local
 @app.route('/stream/atualizar/bloqueados')
 def stream_bloqueados():
     def generate():
         def send_log(msg, pct):
             return f"data: {json.dumps({'message': msg, 'pct': pct})}\n\n"
 
-        yield send_log("📡 Solicitando atualização ao Agente Local no Brasil...", 20)
+        yield send_log("📡 Solicitando atualização ao Agente Local no Brasil...", 5)
         try:
             sheet = conectar_google_sheets()
             sheet.update_acell('Z2', 'PENDENTE')
+            sheet.update_acell('Z3', 'Aguardando agente local...')
             
-            # Monitora a célula Z2 aguardando a finalização do Agente Local
-            tentativas = 0
-            while tentativas < 60:  # Aguarda até 3 minutos
-                time.sleep(3)
-                tentativas += 1
-                status = sheet.acell('Z2').value
-                
-                if status == 'EM_ANDAMENTO':
-                    yield send_log("🔐 Agente local conectado no CLIF... processando", 50)
-                elif status == 'CONCLUIDO':
+            ult_pct = 5
+            ult_msg = ""
+            tentativas_sem_resposta = 0
+
+            while tentativas_sem_resposta < 90:  # Aguarda até ~3 minutos
+                time.sleep(2)
+                status_z2 = str(sheet.acell('Z2').value or '').strip()
+                msg_z3 = str(sheet.acell('Z3').value or '').strip()
+
+                if status_z2 == 'CONCLUIDO':
                     yield send_log("✅ Concluído! Base 100% atualizada.", 100)
                     return
-                elif status and 'ERRO' in status:
-                    yield send_log(f"❌ {status}", -1)
+                elif status_z2 == 'ERRO':
+                    yield send_log(msg_z3 if msg_z3 else "❌ Erro na automação local.", -1)
                     return
+                elif status_z2.isdigit():
+                    pct_atual = int(status_z2)
+                    if pct_atual != ult_pct or msg_z3 != ult_msg:
+                        ult_pct = pct_atual
+                        ult_msg = msg_z3
+                        yield send_log(msg_z3, pct_atual)
+                    tentativas_sem_resposta = 0
+                else:
+                    tentativas_sem_resposta += 1
 
             yield send_log("⚠️ Agente local não respondeu a tempo.", -1)
         except Exception as e:
-            yield send_log(f"❌ Erro: {str(e)}", -1)
+            yield send_log(f"❌ Erro de comunicação: {str(e)}", -1)
 
     return Response(generate(), mimetype='text/event-stream')
 
