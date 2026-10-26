@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from flask import Flask, render_template, jsonify, request, Response
+from flask import Flask, render_template, jsonify, request, Response, send_from_directory
 
 app = Flask(__name__)
 
@@ -63,6 +63,17 @@ def ler_bloqueados_google_sheets():
     except Exception as e:
         print(f"Erro ao ler sheets: {e}")
         return pd.DataFrame(), ""
+
+# --- ROTAS PARA INTEGRAR O PAINEL CEDIB DA PASTA /cedib ---
+@app.route('/cedib')
+@app.route('/cedib/')
+def serve_cedib():
+    return send_from_directory('cedib', 'index.html')
+
+@app.route('/cedib/<path:filename>')
+def serve_cedib_static(filename):
+    return send_from_directory('cedib', filename)
+# --------------------------------------------------------
 
 @app.route('/')
 def index():
@@ -123,7 +134,6 @@ def get_kpi_bloqueados():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
 
-# 1. Usuário clica no site: Marca status como PENDENTE
 @app.route('/api/solicitar/atualizacao', methods=['POST', 'GET'])
 def solicitar_atualizacao():
     global STATUS_GLOBAL
@@ -134,7 +144,6 @@ def solicitar_atualizacao():
     }
     return jsonify({"status": "success"})
 
-# 2. Agente Local envia o progresso em tempo real para o Render
 @app.route('/api/atualizar/status-local', methods=['POST'])
 def atualizar_status_local():
     global STATUS_GLOBAL
@@ -147,7 +156,6 @@ def atualizar_status_local():
         }
     return jsonify({"status": "recebido"})
 
-# 3. O site consulta o status atual na memória do servidor instantaneamente
 @app.route('/api/status/atualizacao', methods=['GET'])
 def checar_status_atualizacao():
     return jsonify(STATUS_GLOBAL)

@@ -63,9 +63,13 @@ def pedir_datas_usuario():
 
 def configurar_driver():
     chrome_options = webdriver.ChromeOptions()
-    chrome_options.add_argument("--headless") 
+    
+    # 🕵️‍♂️ MODO HEADLESS ATIVADO (Roda 100% invisível em segundo plano para Win+L)
+    chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--window-size=1920,1080")
     
     prefs = {
         "download.default_directory": DOWNLOAD_PATH,
@@ -156,10 +160,6 @@ def enviar_para_google(caminho_excel, nome_aba):
 # --- INTELIGÊNCIA & PROCESSAMENTO DE KPIS ---
 
 def processar_kpi_bloqueados(caminho_excel):
-    """
-    Lê o relatório bruto de produtos bloqueados, gera os resumos consolidados,
-    encontra a data do último bloqueio e cria a lista detalhada tratada.
-    """
     try:
         print("🧠 Processando inteligência, lista detalhada e KPIs de Bloqueados...")
         df = pd.read_excel(caminho_excel)
@@ -198,19 +198,16 @@ def processar_kpi_bloqueados(caminho_excel):
         df_datas = pd.to_datetime(df[col_data], errors='coerce', dayfirst=True)
         data_ultimo_bloqueio = df_datas.max().strftime('%d/%m/%Y %H:%M:%S') if pd.notnull(df_datas.max()) else "N/I"
 
-        # 5. Lista Detalhada Limpa (Filtrando e ordenando)
+        # 5. Lista Detalhada Limpa
         df_detalhado = df[[col_data, col_codigo, col_desc, col_projeto, col_motivo, col_usuario, col_detalhe, col_valor]].copy()
         df_detalhado.columns = ['DATA_BLOQUEIO', 'CODIGO', 'DESCRICAO_ITEM', 'PROJETO', 'MOTIVO_BLOQUEIO', 'USUARIO', 'DETALHE_MOTIVO', 'VALOR_TOTAL']
         
-        # Converte data temporariamente para ordenar do mais recente para o mais antigo
         df_detalhado['DATA_TMP'] = pd.to_datetime(df_detalhado['DATA_BLOQUEIO'], errors='coerce', dayfirst=True)
         df_detalhado = df_detalhado.sort_values(by='DATA_TMP', ascending=False).drop(columns=['DATA_TMP'])
 
-        # Envia tudo para a aba KPI_BLOQUEADOS
         sheet_kpi = conectar_google_sheets("KPI_BLOQUEADOS")
         sheet_kpi.clear()
 
-        # Blocos Superiores (Resumos)
         sheet_kpi.update_acell('A1', "--- RESUMO POR MOTIVO DE BLOQUEIO ---")
         enviar_dataframe_para_sheets(sheet_kpi, res_motivo, limpar=False, celula_inicio='A2')
 
@@ -220,12 +217,10 @@ def processar_kpi_bloqueados(caminho_excel):
         sheet_kpi.update_acell('I1', "--- RESUMO POR PROJETO ---")
         enviar_dataframe_para_sheets(sheet_kpi, res_projeto, limpar=False, celula_inicio='I2')
 
-        # Indicadores de Cabeçalho
         horario_atual = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         sheet_kpi.update_acell('M1', f"Atualizado em: {horario_atual}")
         sheet_kpi.update_acell('M2', f"Último Bloqueio registrado em: {data_ultimo_bloqueio}")
 
-        # Bloco da Lista Detalhada (Inicia a partir da linha 25 para dar espaço aos resumos)
         sheet_kpi.update_acell('A25', "--- LISTA DETALHADA DOS ITENS BLOQUEADOS ---")
         enviar_dataframe_para_sheets(sheet_kpi, df_detalhado, limpar=False, celula_inicio='A26')
 
@@ -267,9 +262,7 @@ def rotina_bloqueados(driver, wait):
     wait.until(EC.element_to_be_clickable((By.ID, "XLSX"))).click()
     if aguardar_download():
         arquivo = max([os.path.join(DOWNLOAD_PATH, f) for f in os.listdir(DOWNLOAD_PATH)], key=os.path.getctime)
-        # 1. Atualiza base bruta
         enviar_para_google(arquivo, "bloqueados")
-        # 2. Atualiza aba de inteligência / KPI
         processar_kpi_bloqueados(arquivo)
         os.remove(arquivo)
 
