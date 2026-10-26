@@ -6,12 +6,19 @@ import pandas as pd
 import numpy as np
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from flask import Flask, render_template, jsonify, Response
+from flask import Flask, render_template, jsonify, request, Response
 
 app = Flask(__name__)
 
 CHAVE_JSON = "chave_google.json"
 PLANILHA_URL = "https://docs.google.com/spreadsheets/d/11tMl509ya0kzIijINjv3KmhaWzTX5GzG6cCD5WEznwo/edit?gid=47982942#gid=47982942"
+
+# Armazena o estado atual do progresso na memória RAM do servidor Render
+STATUS_GLOBAL = {
+    "status": "PARADO",
+    "message": "Aguardando início...",
+    "pct": 0
+}
 
 def conectar_google_sheets():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -114,45 +121,36 @@ def get_kpi_bloqueados():
             "ultima_atualizacao": data_atualizacao
         })
     except Exception as e:
-        print(f"❌ ERRO API KPI: {str(e)}")
         return jsonify({"status": "error", "message": str(e)})
 
-# 1. SOLICITA A ATUALIZAÇÃO (Escreve PENDENTE na planilha)
+# 1. Usuário clica no site: Marca status como PENDENTE
 @app.route('/api/solicitar/atualizacao', methods=['POST', 'GET'])
 def solicitar_atualizacao():
-    try:
-        sheet = conectar_google_sheets()
-        sheet.update_acell('Z2', 'PENDENTE')
-        sheet.update_acell('Z3', '⚙️ Solicitação enviada ao Agente Local...')
-        return jsonify({"status": "success", "message": "Solicitação enviada!"})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)})
+    global STATUS_GLOBAL
+    STATUS_GLOBAL = {
+        "status": "PENDENTE",
+        "message": "📡 Aguardando Agente Local iniciar...",
+        "pct": 5
+    }
+    return jsonify({"status": "success"})
 
-# 2. CONSULTA O STATUS EM TEMPO REAL DIRETO DA PLANILHA
+# 2. Agente Local envia o progresso em tempo real para o Render
+@app.route('/api/atualizar/status-local', methods=['POST'])
+def atualizar_status_local():
+    global STATUS_GLOBAL
+    data = request.json
+    if data:
+        STATUS_GLOBAL = {
+            "status": data.get("status", "EM_ANDAMENTO"),
+            "message": data.get("message", ""),
+            "pct": int(data.get("pct", 0))
+        }
+    return jsonify({"status": "recebido"})
+
+# 3. O site consulta o status atual na memória do servidor instantaneamente
 @app.route('/api/status/atualizacao', methods=['GET'])
 def checar_status_atualizacao():
-    try:
-        sheet = conectar_google_sheets()
-        status_z2 = str(sheet.acell('Z2').value or '').strip()
-        msg_z3 = str(sheet.acell('Z3').value or '').strip()
-
-        pct = 0
-        if status_z2 == 'PENDENTE':
-            pct = 10
-        elif status_z2 == 'CONCLUIDO':
-            pct = 100
-        elif status_z2 == 'ERRO':
-            pct = -1
-        elif status_z2.isdigit():
-            pct = int(status_z2)
-
-        return jsonify({
-            "status": status_z2,
-            "message": msg_z3,
-            "pct": pct
-        })
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e), "pct": -1})
+    return jsonify(STATUS_GLOBAL)
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
