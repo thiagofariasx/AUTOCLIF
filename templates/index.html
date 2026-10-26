@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoCLIF - Executive Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', system-ui, sans-serif; overflow-x: hidden; }
+        
+        /* SIDEBAR E RECOLHIMENTO */
+        .sidebar { height: 100vh; width: 250px; position: fixed; top: 0; left: 0; background-color: #1e293b; padding-top: 20px; border-right: 1px solid #334155; transition: all 0.3s ease; z-index: 1000; }
+        .sidebar.collapsed { left: -250px; }
+        .sidebar h3 { text-align: center; font-weight: bold; margin-bottom: 25px; color: #38bdf8; }
+        .sidebar a { padding: 12px 20px; text-decoration: none; font-size: 13.5px; color: #94a3b8; display: flex; justify-content: space-between; align-items: center; }
+        .sidebar a:hover, .sidebar a.active { background-color: #0f172a; color: #38bdf8; border-left: 4px solid #38bdf8; }
+        .badge-em-breve { background-color: #334155; color: #64748b; font-size: 9px; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; font-weight: bold; }
+        
+        /* BOTÃO TOGGLE BORDA */
+        .btn-toggle-sidebar {
+            position: fixed;
+            top: 20px;
+            left: 250px;
+            z-index: 1001;
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            border-left: none;
+            color: #38bdf8;
+            border-radius: 0 8px 8px 0;
+            padding: 8px 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 11px;
+            line-height: 1;
+        }
+        .btn-toggle-sidebar.collapsed-btn { left: 0px; }
+        .btn-toggle-sidebar:hover { background-color: #0f172a; color: #fff; }
+
+        /* CONTEÚDO */
+        .main-content { margin-left: 250px; padding: 25px 35px; transition: all 0.3s ease; }
+        .main-content.expanded { margin-left: 0; padding-left: 35px; }
+
+        .card-kpi { background-color: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 20px; }
+        .badge-beta { background-color: #f59e0b; color: #000; font-size: 11px; padding: 2px 6px; border-radius: 4px; }
+        
+        /* TABELA CUSTOMIZADA */
+        .table-custom { color: #ffffff !important; font-size: 13px; background-color: #0f172a !important; border-radius: 8px; overflow: hidden; }
+        .table-custom thead tr th { background-color: #1e293b !important; color: #38bdf8 !important; font-weight: 700 !important; border-bottom: 2px solid #334155 !important; padding: 12px 10px !important; }
+        .table-custom tbody tr { background-color: #0f172a !important; border-bottom: 1px solid #1e293b !important; }
+        .table-custom tbody tr:hover { background-color: #1e293b !important; }
+        .table-custom tbody tr td { background-color: transparent !important; color: #f8fafc !important; padding: 10px !important; }
+        .col-detalhe-texto { color: #94a3b8 !important; font-size: 12px; }
+        .col-valor-texto { color: #38bdf8 !important; font-weight: bold !important; }
+
+        /* MINI TABELA PIZZA */
+        .mini-table { font-size: 11.5px; color: #f8fafc; width: 100%; border-collapse: collapse; }
+        .mini-table th { color: #38bdf8; border-bottom: 1px solid #334155; padding-bottom: 6px; font-weight: 700; }
+        .mini-table td { padding: 6px 4px; border-bottom: 1px solid #1e293b; color: #e2e8f0; }
+
+        /* LINHA DE PROGRESSO DISCRETA */
+        .hacker-mini-line {
+            transition: opacity 0.4s ease;
+            font-size: 11px;
+            font-family: monospace;
+            color: #22c55e;
+        }
+        .progress-hacker-mini {
+            height: 4px;
+            background-color: #0f172a;
+            border-radius: 2px;
+            overflow: hidden;
+            border: 1px solid #10b981;
+        }
+        .progress-bar-hacker-mini {
+            height: 100%;
+            background-color: #22c55e;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        /* NOTIFICAÇÃO NATIVA */
+        .toast-nativ {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background-color: #1e293b;
+            border-left: 4px solid #10b981;
+            color: #fff;
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- NOTIFICAÇÃO NATIVA DO SISTEMA -->
+    <div id="toastNativo" class="toast-nativ">
+        <strong id="toastTitulo">Sistema</strong>
+        <div id="toastMsg" class="small text-light">Mensagem...</div>
+    </div>
+
+    <!-- BOTÃO TOGGLE ULTRA DISCRETO NA BORDA -->
+    <button class="btn-toggle-sidebar" id="btnToggleSide" onclick="toggleSidebar()" title="Recolher/Expandir Menu">◀</button>
+
+    <!-- SIDEBAR -->
+    <div class="sidebar" id="sidebar">
+        <h3>AutoCLIF <span class="badge-beta">BETA</span></h3>
+        <a href="#" class="active">📦 Dash Bloqueados</a>
+        <a href="#">📥 Entradas Pendentes <span class="badge-em-breve">Em breve</span></a>
+        <a href="#">✅ Entradas Concluídas <span class="badge-em-breve">Em breve</span></a>
+        <a href="#">📋 Pedidos em Aberto <span class="badge-em-breve">Em breve</span></a>
+        <a href="#">🚚 Saídas Concluídas <span class="badge-em-breve">Em breve</span></a>
+        <a href="#">📱 Coletor <span class="badge-em-breve">Em breve</span></a>
+    </div>
+
+    <div class="main-content" id="mainContent">
+        <div class="d-flex justify-content-between align-items-start mb-4">
+            <div>
+                <h2 class="fw-bold text-white mb-0">Gestão de Produtos Bloqueados</h2>
+                <small style="color: #94a3b8 !important;" id="txtFiltroAtivo">Exibindo dados consolidados globais</small>
+            </div>
+
+            <!-- ÁREA DO BOTÃO + DATA/HORA M1 + STATUS EM LINHA ÚNICA -->
+            <div style="min-width: 280px;" class="text-end">
+                <button id="btnAtualizar" class="btn btn-primary btn-sm px-3 fw-semibold w-100" onclick="iniciarAtualizacaoCLIF()">
+                    <i id="iconRefresh" class="fas fa-sync-alt me-1"></i> Atualizar CLIF
+                </button>
+                
+                <!-- DATA E HORA DA CÉLULA DA PLANILHA -->
+                <div class="mt-1">
+                    <small style="color: #64748b; font-size: 11px;" id="txtUltimaAtualizacao">Carregando data de atualização...</small>
+                </div>
+
+                <!-- LINHA DISCRETA DE ATUALIZAÇÃO -->
+                <div id="hackerContainer" class="hacker-mini-line d-none mt-2 text-start">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span id="lblStatusTxt">> Aguardando...</span>
+                        <strong id="lblStatusPct">0%</strong>
+                    </div>
+                    <div class="progress-hacker-mini">
+                        <div id="barHacker" class="progress-bar-hacker-mini"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CARDS DE KPI -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card-kpi">
+                    <span class="fs-6 fw-semibold" style="color: #94a3b8;">Valor Total Bloqueado</span>
+                    <h2 id="txtValorTotal" class="fw-bold text-danger mt-1">R$ 0,00</h2>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card-kpi">
+                    <span class="fs-6 fw-semibold" style="color: #94a3b8;">Total de Itens Bloqueados</span>
+                    <h2 id="txtQtdItens" class="fw-bold text-info mt-1">0</h2>
+                </div>
+            </div>
+        </div>
+
+        <!-- GRÁFICOS -->
+        <div class="row mb-4">
+            <div class="col-md-7">
+                <div class="card-kpi">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="fw-bold text-white m-0">Distribuição por Motivo</h6>
+                        <div>
+                            <button class="btn btn-xs btn-outline-info me-1 py-0 px-2" style="font-size:11px;" onclick="toggleTodosMotivos(true)">Marcar Todos</button>
+                            <button class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size:11px;" onclick="toggleTodosMotivos(false)">Desmarcar Todos</button>
+                        </div>
+                    </div>
+
+                    <div class="row align-items-center">
+                        <div class="col-md-6" style="height: 250px; position: relative;">
+                            <canvas id="chartMotivos"></canvas>
+                        </div>
+                        <div class="col-md-6">
+                            <div style="max-height: 240px; overflow-y: auto; padding-right: 5px;">
+                                <table class="mini-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Motivo</th>
+                                            <th class="text-end">Qtd</th>
+                                            <th class="text-end">Valor (R$)</th>
+                                            <th class="text-end">%</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="bodyMiniTabela"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-5">
+                <div class="card-kpi">
+                    <h6 class="fw-bold text-white mb-3">Top Projetos Afetados (R$)</h6>
+                    <div style="height: 250px; position: relative;">
+                        <canvas id="chartProjetos"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TABELA DETALHADA -->
+        <div class="card-kpi">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <h6 class="fw-bold text-white m-0">Lista Detalhada dos Itens Bloqueados</h6>
+                    <small style="color: #94a3b8;" id="infoPaginacao">Exibindo 0 de 0 itens</small>
+                </div>
+                <div class="d-flex gap-2">
+                    <input type="text" id="inputBusca" class="form-control form-control-sm bg-dark text-white border-secondary" placeholder="🔍 Pesquisar..." onkeyup="filtrarPorTexto()">
+                </div>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="table table-custom align-middle" id="tabelaBloqueados">
+                    <thead>
+                        <tr>
+                            <th>Data</th>
+                            <th>Código</th>
+                            <th>Descrição</th>
+                            <th>Projeto</th>
+                            <th>Motivo</th>
+                            <th>Descrição Detalhada do Motivo</th>
+                            <th>Usuário</th>
+                            <th class="text-end">Valor Total</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center mt-3">
+                <button id="btnPrev" class="btn btn-sm btn-outline-light" onclick="mudarPagina(-1)">◀ Anterior</button>
+                <span id="txtPaginaAtual" style="color: #94a3b8;" class="fs-6">Página 1</span>
+                <button id="btnNext" class="btn btn-sm btn-outline-light" onclick="mudarPagina(1)">Próximo ▶</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        Chart.register(ChartDataLabels);
+
+        let dadosGlobais = [];
+        let motivosAtivos = new Set();
+        let paginaAtual = 1;
+        const itensPorPagina = 50;
+
+        let chartMotivosInstance = null;
+        let chartProjetosInstance = null;
+
+        const PALETA_CORES = ['#ef4444', '#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
+
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const main = document.getElementById('mainContent');
+            const btn = document.getElementById('btnToggleSide');
+
+            sidebar.classList.toggle('collapsed');
+            main.classList.toggle('expanded');
+            btn.classList.toggle('collapsed-btn');
+
+            if (sidebar.classList.contains('collapsed')) {
+                btn.innerText = '▶';
+            } else {
+                btn.innerText = '◀';
+            }
+        }
+
+        function exibirToast(titulo, msg, sucesso = true) {
+            const toast = document.getElementById('toastNativo');
+            document.getElementById('toastTitulo').innerText = titulo;
+            document.getElementById('toastMsg').innerText = msg;
+            toast.style.borderLeftColor = sucesso ? '#10b981' : '#ef4444';
+            toast.style.display = 'block';
+            setTimeout(() => { toast.style.display = 'none'; }, 4000);
+        }
+
+        function iniciarAtualizacaoCLIF() {
+            const btn = document.getElementById('btnAtualizar');
+            const icon = document.getElementById('iconRefresh');
+            const box = document.getElementById('hackerContainer');
+            const bar = document.getElementById('barHacker');
+            const pctLbl = document.getElementById('lblStatusPct');
+            const txtLbl = document.getElementById('lblStatusTxt');
+
+            btn.disabled = true;
+            icon.classList.add('fa-spin');
+            box.style.opacity = '1';
+            box.classList.remove('d-none');
+            txtLbl.innerText = '> Inicializando...';
+
+            const evtSource = new EventSource('/stream/atualizar/bloqueados');
+
+            evtSource.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                
+                if (data.pct >= 0) {
+                    bar.style.width = data.pct + '%';
+                    pctLbl.innerText = data.pct + '%';
+                    txtLbl.innerText = data.message;
+                }
+
+                if (data.pct === 100) {
+                    evtSource.close();
+                    btn.disabled = false;
+                    icon.classList.remove('fa-spin');
+                    exibirToast("Sucesso", "Base de Bloqueados Atualizada com Sucesso!", true);
+                    
+                    setTimeout(() => {
+                        box.style.opacity = '0';
+                        setTimeout(() => box.classList.add('d-none'), 400);
+                    }, 2500);
+
+                    carregarDados();
+                }
+
+                if (data.pct === -1) {
+                    evtSource.close();
+                    btn.disabled = false;
+                    icon.classList.remove('fa-spin');
+                    exibirToast("Erro", data.message, false);
+                }
+            };
+
+            evtSource.onerror = function() {
+                evtSource.close();
+                btn.disabled = false;
+                icon.classList.remove('fa-spin');
+            };
+        }
+
+        function obterCorMotivo(motivo) {
+            let agrupMotivo = {};
+            dadosGlobais.forEach(d => {
+                if (!agrupMotivo[d.motivo]) agrupMotivo[d.motivo] = 0;
+                agrupMotivo[d.motivo] += d.valor;
+            });
+
+            let sortedMotivos = Object.entries(agrupMotivo).sort((a,b) => b[1] - a[1]).map(m => m[0]);
+            let index = sortedMotivos.indexOf(motivo);
+            
+            if (index !== -1) {
+                return PALETA_CORES[index % PALETA_CORES.length];
+            }
+            return '#3b82f6';
+        }
+
+        function carregarDados() {
+            fetch('/api/kpi/bloqueados')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        dadosGlobais = data.tabela;
+                        
+                        let txtData = data.ultima_atualizacao || '';
+                        if (txtData && !txtData.includes('Unnamed')) {
+                            document.getElementById('txtUltimaAtualizacao').innerText = txtData;
+                        } else {
+                            document.getElementById('txtUltimaAtualizacao').innerText = 'Última atualização registrada na planilha';
+                        }
+
+                        motivosAtivos = new Set(dadosGlobais.map(d => d.motivo));
+                        paginaAtual = 1;
+                        renderizarPainel();
+                    }
+                });
+        }
+
+        function renderizarPainel() {
+            const busca = document.getElementById('inputBusca').value.toLowerCase();
+            
+            let dadosFiltrados = dadosGlobais.filter(d => {
+                const atendeMotivo = motivosAtivos.has(d.motivo);
+                const atendeTexto = !busca || 
+                    d.codigo.toLowerCase().includes(busca) || 
+                    d.descricao.toLowerCase().includes(busca) || 
+                    d.projeto.toLowerCase().includes(busca) || 
+                    d.usuario.toLowerCase().includes(busca) ||
+                    d.detalhe.toLowerCase().includes(busca);
+                return atendeMotivo && atendeTexto;
+            });
+
+            let totalValor = dadosFiltrados.reduce((acc, curr) => acc + curr.valor, 0);
+            let totalItens = dadosFiltrados.length;
+
+            // FORÇA EXATAMENTE 2 CASAS DECIMAIS (CENTAVOS)
+            document.getElementById('txtValorTotal').innerText = `R$ ${totalValor.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            document.getElementById('txtQtdItens').innerText = totalItens;
+
+            renderizarTabelaPaginada(dadosFiltrados);
+            renderizarGraficosEQuantitativo();
+        }
+
+        function renderizarTabelaPaginada(lista) {
+            const totalPaginas = Math.ceil(lista.length / itensPorPagina) || 1;
+            if (paginaAtual > totalPaginas) paginaAtual = totalPaginas;
+            if (paginaAtual < 1) paginaAtual = 1;
+
+            const inicio = (paginaAtual - 1) * itensPorPagina;
+            const fim = inicio + itensPorPagina;
+            const itensPagina = lista.slice(inicio, fim);
+
+            const tbody = document.querySelector('#tabelaBloqueados tbody');
+            tbody.innerHTML = '';
+
+            itensPagina.forEach(item => {
+                let corBadge = obterCorMotivo(item.motivo);
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td class="text-nowrap text-white">${item.data}</td>
+                        <td><strong class="text-info">${item.codigo}</strong></td>
+                        <td class="text-white">${item.descricao}</td>
+                        <td class="text-white">${item.projeto}</td>
+                        <td>
+                            <span class="badge fw-semibold" style="background-color: ${corBadge}; color: #ffffff; padding: 5px 8px; border-radius: 4px;">
+                                ${item.motivo}
+                            </span>
+                        </td>
+                        <td><span class="col-detalhe-texto">${item.detalhe || '-'}</span></td>
+                        <td class="text-white">${item.usuario}</td>
+                        <td class="text-end col-valor-texto text-nowrap">R$ ${item.valor.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                    </tr>
+                `;
+            });
+
+            document.getElementById('infoPaginacao').innerText = `Exibindo ${lista.length > 0 ? inicio + 1 : 0} até ${Math.min(fim, lista.length)} de ${lista.length} itens`;
+            document.getElementById('txtPaginaAtual').innerText = `Página ${paginaAtual} de ${totalPaginas}`;
+            document.getElementById('btnPrev').disabled = paginaAtual === 1;
+            document.getElementById('btnNext').disabled = paginaAtual === totalPaginas;
+        }
+
+        function mudarPagina(delta) {
+            paginaAtual += delta;
+            renderizarPainel();
+        }
+
+        function filtrarPorTexto() {
+            paginaAtual = 1;
+            renderizarPainel();
+        }
+
+        function toggleTodosMotivos(ativar) {
+            if (ativar) {
+                motivosAtivos = new Set(dadosGlobais.map(d => d.motivo));
+            } else {
+                motivosAtivos.clear();
+            }
+            paginaAtual = 1;
+            renderizarPainel();
+        }
+
+        function renderizarGraficosEQuantitativo() {
+            let agrupMotivo = {};
+            let totalGeralValor = 0;
+
+            dadosGlobais.forEach(d => {
+                if (!agrupMotivo[d.motivo]) {
+                    agrupMotivo[d.motivo] = { qtd: 0, valor: 0 };
+                }
+                agrupMotivo[d.motivo].qtd += 1;
+                agrupMotivo[d.motivo].valor += d.valor;
+                totalGeralValor += d.valor;
+            });
+
+            let sortedMotivos = Object.entries(agrupMotivo).sort((a,b) => b[1].valor - a[1].valor);
+
+            const tbodyMini = document.getElementById('bodyMiniTabela');
+            tbodyMini.innerHTML = '';
+            
+            sortedMotivos.forEach(([motivo, dados]) => {
+                let pct = totalGeralValor > 0 ? ((dados.valor / totalGeralValor) * 100).toFixed(1) : '0.0';
+                let inativo = !motivosAtivos.has(motivo);
+
+                tbodyMini.innerHTML += `
+                    <tr style="cursor:pointer; ${inativo ? 'opacity: 0.35; text-decoration: line-through;' : ''}" onclick="toggleMotivoEspecifico('${motivo}')">
+                        <td><small class="text-white">${motivo}</small></td>
+                        <td class="text-end text-white">${dados.qtd}</td>
+                        <td class="text-end text-white">R$ ${dados.valor.toLocaleString('pt-BR', {maximumFractionDigits: 0})}</td>
+                        <td class="text-end text-info font-weight-bold">${pct}%</td>
+                    </tr>
+                `;
+            });
+
+            const ctxMotivos = document.getElementById('chartMotivos').getContext('2d');
+            if (chartMotivosInstance) chartMotivosInstance.destroy();
+
+            let labelsChart = sortedMotivos.map(m => m[0]);
+            let dataChart = sortedMotivos.map(m => motivosAtivos.has(m[0]) ? m[1].valor : 0);
+
+            chartMotivosInstance = new Chart(ctxMotivos, {
+                type: 'doughnut',
+                data: {
+                    labels: labelsChart,
+                    datasets: [{
+                        data: dataChart,
+                        backgroundColor: PALETA_CORES,
+                        borderWidth: 2,
+                        borderColor: '#1e293b'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        datalabels: {
+                            color: '#ffffff',
+                            font: { weight: 'bold', size: 13 },
+                            formatter: (value, ctx) => {
+                                let sum = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                                if (sum === 0 || value === 0) return '';
+                                let percentage = (value * 100 / sum).toFixed(1);
+                                return percentage > 4 ? percentage + '%' : '';
+                            }
+                        }
+                    },
+                    onClick: (evt, activeElements) => {
+                        if (activeElements.length > 0) {
+                            let idx = activeElements[0].index;
+                            toggleMotivoEspecifico(labelsChart[idx]);
+                        }
+                    }
+                }
+            });
+
+            // GRÁFICO 2: TOP PROJETOS COM VALORES DISCRETOS (DENTRO/FORA)
+            let dadosAtivos = dadosGlobais.filter(d => motivosAtivos.has(d.motivo));
+            let agrupProjeto = {};
+            dadosAtivos.forEach(d => {
+                agrupProjeto[d.projeto] = (agrupProjeto[d.projeto] || 0) + d.valor;
+            });
+            let sortedProjetos = Object.entries(agrupProjeto).sort((a,b) => b[1] - a[1]).slice(0, 5);
+
+            const ctxProjetos = document.getElementById('chartProjetos').getContext('2d');
+            if (chartProjetosInstance) chartProjetosInstance.destroy();
+
+            let maxValorProjetos = Math.max(...sortedProjetos.map(p => p[1]), 1);
+
+            chartProjetosInstance = new Chart(ctxProjetos, {
+                type: 'bar',
+                data: {
+                    labels: sortedProjetos.map(p => p[0]),
+                    datasets: [{
+                        data: sortedProjetos.map(p => p[1]),
+                        backgroundColor: PALETA_CORES.slice(0, sortedProjetos.length),
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { 
+                        legend: { display: false },
+                        datalabels: {
+                            display: true,
+                            color: (ctx) => {
+                                let val = ctx.dataset.data[ctx.dataIndex];
+                                return (val / maxValorProjetos) < 0.20 ? '#38bdf8' : '#ffffff';
+                            },
+                            font: { size: 10, weight: 'bold' },
+                            anchor: (ctx) => {
+                                let val = ctx.dataset.data[ctx.dataIndex];
+                                return (val / maxValorProjetos) < 0.20 ? 'end' : 'center';
+                            },
+                            align: (ctx) => {
+                                let val = ctx.dataset.data[ctx.dataIndex];
+                                return (val / maxValorProjetos) < 0.20 ? 'end' : 'center';
+                            },
+                            formatter: (value) => {
+                                if (value >= 1000000) {
+                                    return 'R$ ' + (value / 1000000).toFixed(1) + 'M';
+                                } else if (value >= 1000) {
+                                    return 'R$ ' + (value / 1000).toFixed(0) + 'k';
+                                }
+                                return 'R$ ' + value.toLocaleString('pt-BR', {minimumFractionDigits: 0});
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { 
+                            ticks: { color: '#94a3b8' }, 
+                            grid: { color: '#334155' } 
+                        },
+                        y: { 
+                            ticks: { color: '#f8fafc' }, 
+                            grid: { display: false } 
+                        }
+                    }
+                }
+            });
+        }
+
+        function toggleMotivoEspecifico(motivo) {
+            if (motivosAtivos.has(motivo)) {
+                motivosAtivos.delete(motivo);
+            } else {
+                motivosAtivos.add(motivo);
+            }
+            paginaAtual = 1;
+            renderizarPainel();
+        }
+
+        carregarDados();
+    </script>
+</body>
+</html>
