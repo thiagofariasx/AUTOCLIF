@@ -10,20 +10,16 @@ from flask import Flask, render_template, jsonify, Response
 
 app = Flask(__name__)
 
-# Configuração das credenciais e URL oficial do Google Sheets
 CHAVE_JSON = "chave_google.json"
 PLANILHA_URL = "https://docs.google.com/spreadsheets/d/11tMl509ya0kzIijINjv3KmhaWzTX5GzG6cCD5WEznwo/edit?gid=47982942#gid=47982942"
 
 def conectar_google_sheets():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    
-    # Se estiver rodando no Render (Variável de Ambiente)
     creds_json_env = os.environ.get("GOOGLE_CREDENTIALS_JSON")
     if creds_json_env:
         creds_dict = json.loads(creds_json_env)
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     else:
-        # Execução local
         creds = ServiceAccountCredentials.from_json_keyfile_name(CHAVE_JSON, scope)
         
     client = gspread.authorize(creds)
@@ -121,50 +117,42 @@ def get_kpi_bloqueados():
         print(f"❌ ERRO API KPI: {str(e)}")
         return jsonify({"status": "error", "message": str(e)})
 
-# ROTA DA NUVEM: Grava 'PENDENTE' na célula Z2 do Google Sheets para o Agente Local executar
-# ROTA DA NUVEM: Transmite os logs e a porcentagem real do Agente Local
-@app.route('/stream/atualizar/bloqueados')
-def stream_bloqueados():
-    def generate():
-        def send_log(msg, pct):
-            return f"data: {json.dumps({'message': msg, 'pct': pct})}\n\n"
+# 1. SOLICITA A ATUALIZAÇÃO (Escreve PENDENTE na planilha)
+@app.route('/api/solicitar/atualizacao', methods=['POST', 'GET'])
+def solicitar_atualizacao():
+    try:
+        sheet = conectar_google_sheets()
+        sheet.update_acell('Z2', 'PENDENTE')
+        sheet.update_acell('Z3', '⚙️ Solicitação enviada ao Agente Local...')
+        return jsonify({"status": "success", "message": "Solicitação enviada!"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
 
-        yield send_log("📡 Solicitando atualização ao Agente Local no Brasil...", 5)
-        try:
-            sheet = conectar_google_sheets()
-            sheet.update_acell('Z2', 'PENDENTE')
-            sheet.update_acell('Z3', 'Aguardando agente local...')
-            
-            ult_pct = 5
-            ult_msg = ""
-            tentativas_sem_resposta = 0
+# 2. CONSULTA O STATUS EM TEMPO REAL DIRETO DA PLANILHA
+@app.route('/api/status/atualizacao', methods=['GET'])
+def checar_status_atualizacao():
+    try:
+        sheet = conectar_google_sheets()
+        status_z2 = str(sheet.acell('Z2').value or '').strip()
+        msg_z3 = str(sheet.acell('Z3').value or '').strip()
 
-            while tentativas_sem_resposta < 90:  # Aguarda até ~3 minutos
-                time.sleep(2)
-                status_z2 = str(sheet.acell('Z2').value or '').strip()
-                msg_z3 = str(sheet.acell('Z3').value or '').strip()
+        pct = 0
+        if status_z2 == 'PENDENTE':
+            pct = 10
+        elif status_z2 == 'CONCLUIDO':
+            pct = 100
+        elif status_z2 == 'ERRO':
+            pct = -1
+        elif status_z2.isdigit():
+            pct = int(status_z2)
 
-                if status_z2 == 'CONCLUIDO':
-                    yield send_log("✅ Concluído! Base 100% atualizada.", 100)
-                    return
-                elif status_z2 == 'ERRO':
-                    yield send_log(msg_z3 if msg_z3 else "❌ Erro na automação local.", -1)
-                    return
-                elif status_z2.isdigit():
-                    pct_atual = int(status_z2)
-                    if pct_atual != ult_pct or msg_z3 != ult_msg:
-                        ult_pct = pct_atual
-                        ult_msg = msg_z3
-                        yield send_log(msg_z3, pct_atual)
-                    tentativas_sem_resposta = 0
-                else:
-                    tentativas_sem_resposta += 1
-
-            yield send_log("⚠️ Agente local não respondeu a tempo.", -1)
-        except Exception as e:
-            yield send_log(f"❌ Erro de comunicação: {str(e)}", -1)
-
-    return Response(generate(), mimetype='text/event-stream')
+        return jsonify({
+            "status": status_z2,
+            "message": msg_z3,
+            "pct": pct
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e), "pct": -1})
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
