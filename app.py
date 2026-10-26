@@ -10,14 +10,14 @@ from flask import Flask, render_template, jsonify, Response
 
 app = Flask(__name__)
 
-# Tenta pegar as credenciais da Variável de Ambiente (Nuvem) ou do arquivo local
+# Configuração das credenciais e URL oficial do Google Sheets
 CHAVE_JSON = "chave_google.json"
-PLANILHA_URL = "SUA_URL_DO_GOOGLE_SHEETS_AQUI"  # <-- Coloque sua URL do Google Sheets aqui
+PLANILHA_URL = "https://docs.google.com/spreadsheets/d/11tMl509ya0kzIijINjv3KmhaWzTX5GzG6cCD5WEznwo/edit?gid=47982942#gid=47982942"
 
 def conectar_google_sheets():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     
-    # Se estiver no Render (env var)
+    # Se estiver rodando no Render (Variável de Ambiente)
     creds_json_env = os.environ.get("GOOGLE_CREDENTIALS_JSON")
     if creds_json_env:
         creds_dict = json.loads(creds_json_env)
@@ -121,7 +121,7 @@ def get_kpi_bloqueados():
         print(f"❌ ERRO API KPI: {str(e)}")
         return jsonify({"status": "error", "message": str(e)})
 
-# ROTA DA NUVEM: Grava 'PENDENTE' na Z2 do Google Sheets para o Agente Local executar
+# ROTA DA NUVEM: Grava 'PENDENTE' na célula Z2 do Google Sheets para o Agente Local executar
 @app.route('/stream/atualizar/bloqueados')
 def stream_bloqueados():
     def generate():
@@ -133,9 +133,9 @@ def stream_bloqueados():
             sheet = conectar_google_sheets()
             sheet.update_acell('Z2', 'PENDENTE')
             
-            # Fica monitorando a célula Z2 até o Agente Local terminar
+            # Monitora a célula Z2 aguardando a finalização do Agente Local
             tentativas = 0
-            while tentativas < 60: # Aguarda até 3 minutos
+            while tentativas < 60:  # Aguarda até 3 minutos
                 time.sleep(3)
                 tentativas += 1
                 status = sheet.acell('Z2').value
