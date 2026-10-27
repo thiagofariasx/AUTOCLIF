@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoCLIF - Dash Recebimento</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg: #0b0f19;
+            --card: #111827;
+            --line: #1f2937;
+            --txt: #f1f5f9;
+            --muted: #b0b9c7;
+
+            /* ETAPA do processo (rosquinhas): sempre laranja e azul */
+            --conf: #f59e0b;       /* Conferência   = laranja */
+            --end: #38bdf8;        /* Endereçamento = azul    */
+
+            /* MÉTRICA (listas): cores diferentes das etapas, para não confundir */
+            --notas: #2dd4bf;      /* Notas   = verde-água */
+            --volumes: #a78bfa;    /* Volumes = violeta    */
+        }
+
+        body { background-color: var(--bg); color: var(--txt); font-family: 'Segoe UI', system-ui, sans-serif; overflow-x: hidden; }
+
+        /* ---------- Sidebar (inalterada) ---------- */
+        .sidebar { height: 100vh; width: 250px; position: fixed; top: 0; left: 0; background-color: var(--card); padding-top: 20px; border-right: 1px solid var(--line); transition: all 0.3s ease; z-index: 1000; }
+        .sidebar.collapsed { left: -250px; }
+        .sidebar h3 { text-align: center; font-weight: bold; margin-bottom: 25px; color: #38bdf8; }
+        .sidebar a { padding: 12px 20px; text-decoration: none; font-size: 13.5px; color: var(--muted); display: flex; justify-content: space-between; align-items: center; }
+        .sidebar a:hover, .sidebar a.active { background-color: var(--bg); color: #38bdf8; border-left: 4px solid #38bdf8; }
+        .badge-beta { background-color: #f59e0b; color: #000; font-size: 11px; padding: 2px 6px; border-radius: 4px; }
+
+        .btn-toggle-sidebar {
+            position: fixed; top: 20px; left: 250px; z-index: 1001;
+            background-color: var(--card); border: 1px solid var(--line); border-left: none;
+            color: #38bdf8; border-radius: 0 8px 8px 0; padding: 8px 6px; cursor: pointer; font-size: 11px;
+            transition: left 0.3s ease;
+        }
+        .btn-toggle-sidebar.collapsed-btn { left: 0px; }
+
+        .main-content { margin-left: 250px; padding: 25px 35px; transition: all 0.3s ease; }
+        .main-content.expanded { margin-left: 0; padding-left: 35px; }
+
+        .card-kpi { background-color: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 22px 24px; height: 100%; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); }
+
+        /* ---------- Barra de filtros ---------- */
+        .filter-bar {
+            background-color: var(--card); border: 1px solid var(--line); border-radius: 12px;
+            padding: 12px 18px; margin-bottom: 22px;
+            display: flex; flex-wrap: wrap; align-items: center; gap: 14px 28px;
+        }
+        .filter-group { display: flex; align-items: center; gap: 10px; }
+        .filter-group label { font-size: 13px; color: var(--muted); font-weight: 600; margin: 0; white-space: nowrap; }
+        .filter-group input[type="date"] { width: 160px; }
+        .filter-sep { width: 1px; align-self: stretch; background: var(--line); }
+        .filter-note { font-size: 12.5px; color: var(--muted); }
+        .filter-note i { color: var(--end); margin-right: 5px; }
+
+        .seg { display: inline-flex; border: 1px solid #374151; border-radius: 8px; overflow: hidden; }
+        .seg button { background: transparent; border: 0; color: var(--muted); font-size: 13px; font-weight: 600; padding: 6px 16px; cursor: pointer; }
+        .seg button + button { border-left: 1px solid #374151; }
+        .seg button.on[data-ord="volumes"] { background: rgba(167,139,250,.2); color: var(--volumes); }
+        .seg button.on[data-ord="notas"]   { background: rgba(45,212,191,.2); color: var(--notas); }
+
+        /* ---------- KPI: velocímetro + etapas ---------- */
+        .kpi-head { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); padding-bottom: 12px; margin-bottom: 14px; }
+        .kpi-head h5 { margin: 0; font-weight: 700; font-size: 17px; color: var(--txt); letter-spacing: .2px; }
+        .kpi-head h5 small { font-weight: 500; font-size: 12.5px; color: var(--muted); margin-left: 8px; letter-spacing: 0; }
+        .chip-status { font-size: 13px; font-weight: 700; padding: 4px 14px; border-radius: 999px; color: var(--c, var(--muted)); background: rgba(255,255,255,.06); border: 1px solid var(--c, #374151); }
+
+        .kpi-body { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 18px 40px; padding: 2px 0 4px; }
+        .gauge { width: 290px; flex: 0 0 auto; }
+        .gauge svg { width: 100%; height: auto; display: block; overflow: visible; }
+        .gauge .g-needle { transition: transform .9s cubic-bezier(.2,.8,.2,1); }
+        .gauge .g-val { font-size: 32px; font-weight: 700; font-variant-numeric: tabular-nums; }
+        .gauge .g-lbl { font-size: 13px; fill: var(--muted); font-weight: 600; }
+
+        .kpi-legend { display: flex; flex-direction: column; gap: 12px; width: 280px; }
+        .stage-bar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: #1f2937; }
+        .stage-bar > div { height: 100%; transition: width .6s ease; }
+        .stage-bar .conf { background: var(--conf); }
+        .stage-bar .end  { background: var(--end); }
+        .stage {
+            display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 14px;
+            padding: 10px 16px; border-radius: 10px;
+            background: rgba(255,255,255,.03); border-left: 6px solid var(--c);
+        }
+        .stage-name { grid-column: 1 / -1; font-size: 14px; font-weight: 600; color: var(--c); margin-bottom: 2px; }
+        .stage-val { font-size: 32px; font-weight: 700; line-height: 1.05; font-variant-numeric: tabular-nums; }
+        .stage-pct { font-size: 15px; font-weight: 600; color: var(--c); background: rgba(255,255,255,.06); padding: 3px 10px; border-radius: 999px; font-variant-numeric: tabular-nums; }
+        .stage.conf { --c: var(--conf); }
+        .stage.end  { --c: var(--end); }
+
+        /* ---------- Listas (macro / endereçadores / conferentes) ---------- */
+        .rank-title { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+        .rank-title h6 { margin: 0; font-weight: 700; font-size: 16px; }
+        .rank-title i { font-size: 16px; }
+
+        .rk-row { display: grid; align-items: center; column-gap: 18px; padding: 12px 8px; border-bottom: 1px solid rgba(255,255,255,.06); }
+        .rk-row.com-pos { grid-template-columns: 22px minmax(110px, 170px) 1fr 1fr; }
+        .rk-row.sem-pos { grid-template-columns: minmax(110px, 170px) 1fr 1fr; }
+        .rk-row:not(.rk-head):not(.rk-total):hover { background: rgba(255,255,255,.035); }
+
+        .rk-head { padding-top: 0; padding-bottom: 10px; border-bottom: 1px solid #374151; }
+        .rk-head .h { font-size: 13px; font-weight: 700; }
+        .rk-head .h.nome { color: var(--muted); }
+        .rk-head .h.n { color: var(--notas); }
+        .rk-head .h.v { color: var(--volumes); }
+        .rk-head .h.n, .rk-head .h.v { display: flex; }
+        .rk-head .h .t { min-width: 54px; text-align: right; }
+
+        .rk-pos  { font-size: 13px; color: #6b7280; text-align: center; font-variant-numeric: tabular-nums; }
+        .rk-nome { font-size: 14.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        .rk-cell { display: flex; align-items: center; gap: 10px; }
+        .rk-num  { min-width: 54px; text-align: right; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+        .rk-num.zero { color: #4b5563; font-weight: 500; }
+        .rk-track { flex: 1; height: 10px; background: rgba(255,255,255,.06); border-radius: 5px; overflow: hidden; }
+        .rk-fill { height: 100%; border-radius: 5px; min-width: 4px; transition: width .5s ease; }
+        .rk-fill.n { background: var(--notas); }
+        .rk-fill.v { background: var(--volumes); }
+        .rk-fill.zero { min-width: 0; }
+
+        .rk-total { border-bottom: 0; margin-top: 6px; background: rgba(255,255,255,.04); border-radius: 8px; padding-top: 13px; padding-bottom: 13px; }
+        .rk-total .rk-nome { color: var(--muted); font-size: 14px; }
+        .rk-total .rk-cell { gap: 0; }
+        .rk-total .rk-num { font-size: 21px; }
+        .rk-total .rk-num.n { color: var(--notas); }
+        .rk-total .rk-num.v { color: var(--volumes); }
+
+        .rank-vazio { color: var(--muted); font-size: 13px; padding: 26px 0; text-align: center; }
+
+        /* ---------- Atualização / toast ---------- */
+        .hacker-mini-line { font-size: 11px; font-family: monospace; color: #22c55e; }
+        .progress-hacker-mini { height: 4px; background-color: var(--bg); border-radius: 2px; overflow: hidden; border: 1px solid #10b981; }
+        .progress-bar-hacker-mini { height: 100%; background-color: #22c55e; width: 0%; transition: width 0.3s ease; }
+
+        .toast-nativ {
+            position: fixed; bottom: 20px; right: 20px; background-color: var(--card);
+            border-left: 4px solid #10b981; color: #fff; padding: 15px 20px; border-radius: 8px;
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5); z-index: 2000; display: none;
+        }
+
+        @media (max-width: 575px) {
+            .kpi-body { flex-direction: column; gap: 20px; }
+            .kpi-legend { width: 100%; }
+            .filter-sep { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="toastNativo" class="toast-nativ">
+        <strong id="toastTitulo">Sistema</strong>
+        <div id="toastMsg" class="small text-light">Mensagem...</div>
+    </div>
+
+    <button class="btn-toggle-sidebar" id="btnToggleSide" onclick="toggleSidebar()">◀</button>
+
+    <div class="sidebar" id="sidebar">
+        <h3>AutoCLIF <span class="badge-beta">BETA</span></h3>
+        <a href="/">📦 Dash Bloqueados</a>
+        <a href="/recebimento" class="active">📥 Dash Recebimento</a>
+
+        <a href="https://kpi-cedib-painel.onrender.com" target="_blank" style="color: #38bdf8; font-weight: bold;">
+            <span>📊 KPI-CEDIB</span> <i class="fas fa-external-link-alt" style="font-size: 10px;"></i>
+        </a>
+
+        <a href="#">✅ Entradas Concluídas <span style="background:#1f2937; color:#9ca3af; font-size:9px; padding:2px 6px; border-radius:4px;">Em breve</span></a>
+        <a href="#">📋 Pedidos em Aberto <span style="background:#1f2937; color:#9ca3af; font-size:9px; padding:2px 6px; border-radius:4px;">Em breve</span></a>
+        <a href="#">🚚 Saídas Concluídas <span style="background:#1f2937; color:#9ca3af; font-size:9px; padding:2px 6px; border-radius:4px;">Em breve</span></a>
+        <a href="#">📱 Coletor <span style="background:#1f2937; color:#9ca3af; font-size:9px; padding:2px 6px; border-radius:4px;">Em breve</span></a>
+    </div>
+
+    <div class="main-content" id="mainContent">
+
+        <!-- CABEÇALHO -->
+        <div class="d-flex justify-content-between align-items-start mb-4">
+            <div>
+                <h2 class="fw-bold text-white mb-1"><i class="fas fa-boxes me-2 text-info"></i> Dash Recebimento - Pendências & Produtividade</h2>
+                <small style="color: var(--muted);" id="txtUltimaAtualizacao">Carregando sincronização...</small>
+            </div>
+
+            <div style="min-width: 280px;" class="text-end">
+                <button id="btnAtualizar" class="btn btn-info btn-sm px-3 fw-bold text-dark w-100 shadow-sm" onclick="iniciarAtualizacaoCLIF()">
+                    <i id="iconRefresh" class="fas fa-sync-alt me-1"></i> Atualizar CLIF (Entradas)
+                </button>
+                <div id="hackerContainer" class="hacker-mini-line d-none mt-2 text-start">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span id="lblStatusTxt">> Sincronizando...</span>
+                        <strong id="lblStatusPct">0%</strong>
+                    </div>
+                    <div class="progress-hacker-mini">
+                        <div id="barHacker" class="progress-bar-hacker-mini"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- FILTROS: período + ordenação, numa única barra -->
+        <div class="filter-bar">
+            <div class="filter-group">
+                <label for="inputDataIni">📅 De</label>
+                <input type="date" id="inputDataIni" class="form-control form-control-sm bg-dark text-white border-secondary" onchange="carregarDados()">
+            </div>
+            <div class="filter-group">
+                <label for="inputDataFim">📅 Até</label>
+                <input type="date" id="inputDataFim" class="form-control form-control-sm bg-dark text-white border-secondary" onchange="carregarDados()">
+            </div>
+            <div class="filter-sep"></div>
+            <div class="filter-group">
+                <label>Ordenar listas por</label>
+                <div class="seg" id="segOrdem">
+                    <button type="button" data-ord="volumes" class="on" onclick="definirOrdem('volumes')">Volumes</button>
+                    <button type="button" data-ord="notas" onclick="definirOrdem('notas')">Notas</button>
+                </div>
+            </div>
+            <div class="filter-sep"></div>
+            <div class="filter-note"><i class="fas fa-circle-info"></i>O período vale só para a <strong>produtividade</strong>. As pendências mostram a posição atual.</div>
+        </div>
+
+        <!-- LINHA 1: PENDÊNCIAS (velocímetro + etapas) -->
+        <div class="row mb-4 g-4">
+            <div class="col-12 col-lg-6">
+                <div class="card-kpi">
+                    <div class="kpi-head">
+                        <h5>NOTAS PENDENTES <small>posição atual</small></h5>
+                        <span class="chip-status" id="chipNotas">--</span>
+                    </div>
+                    <div class="kpi-body">
+                        <div class="gauge" id="gaugeNotas"></div>
+                        <div class="kpi-legend">
+                            <div class="stage-bar" id="barStageNotas"><div class="conf" style="width:0%"></div><div class="end" style="width:0%"></div></div>
+                            <div class="stage conf">
+                                <span class="stage-name">Conferência</span>
+                                <span class="stage-val" id="lblConfNotas">0</span>
+                                <span class="stage-pct" id="pctConfNotas">0%</span>
+                            </div>
+                            <div class="stage end">
+                                <span class="stage-name">Endereçamento</span>
+                                <span class="stage-val" id="lblEndNotas">0</span>
+                                <span class="stage-pct" id="pctEndNotas">0%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-lg-6">
+                <div class="card-kpi">
+                    <div class="kpi-head">
+                        <h5>VOLUMES PENDENTES <small>posição atual</small></h5>
+                        <span class="chip-status" id="chipVol">--</span>
+                    </div>
+                    <div class="kpi-body">
+                        <div class="gauge" id="gaugeVolumes"></div>
+                        <div class="kpi-legend">
+                            <div class="stage-bar" id="barStageVol"><div class="conf" style="width:0%"></div><div class="end" style="width:0%"></div></div>
+                            <div class="stage conf">
+                                <span class="stage-name">Conferência</span>
+                                <span class="stage-val" id="lblConfVol">0</span>
+                                <span class="stage-pct" id="pctConfVol">0%</span>
+                            </div>
+                            <div class="stage end">
+                                <span class="stage-name">Endereçamento</span>
+                                <span class="stage-val" id="lblEndVol">0</span>
+                                <span class="stage-pct" id="pctEndVol">0%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- LINHA 2: MACRO | ENDEREÇADORES | CONFERENTES (mesmo formato nos três) -->
+        <div class="row mb-4 g-4">
+            <div class="col-12 col-xl-4">
+                <div class="card-kpi">
+                    <div class="rank-title"><i class="fas fa-layer-group text-info"></i><h6>Pendências por Macro</h6></div>
+                    <div id="listaMacro"></div>
+                </div>
+            </div>
+            <div class="col-12 col-xl-4">
+                <div class="card-kpi">
+                    <div class="rank-title"><i class="fas fa-user-check text-success"></i><h6>Produtividade: Endereçadores</h6></div>
+                    <div id="listaEnd"></div>
+                </div>
+            </div>
+            <div class="col-12 col-xl-4">
+                <div class="card-kpi">
+                    <div class="rank-title"><i class="fas fa-clipboard-check text-warning"></i><h6>Produtividade: Conferentes</h6></div>
+                    <div id="listaConf"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let timerPolling = null;
+        let ultimosDados = null;
+        let ordemAtual = 'volumes';
+
+
+        document.addEventListener("DOMContentLoaded", () => {
+            const hoje = new Date();
+            const isoLocal = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+            const hojeIso = isoLocal(hoje);
+
+            // Padrão: Hoje até Hoje
+            document.getElementById('inputDataIni').value = hojeIso;
+            document.getElementById('inputDataFim').value = hojeIso;
+            Object.values(GAUGES).forEach(iniciarGauge);
+            carregarDados();
+        });
+
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('collapsed');
+            document.getElementById('mainContent').classList.toggle('expanded');
+            document.getElementById('btnToggleSide').classList.toggle('collapsed-btn');
+            document.getElementById('btnToggleSide').innerText =
+                document.getElementById('sidebar').classList.contains('collapsed') ? '▶' : '◀';
+        }
+
+        function exibirToast(titulo, msg, sucesso = true) {
+            const toast = document.getElementById('toastNativo');
+            document.getElementById('toastTitulo').innerText = titulo;
+            document.getElementById('toastMsg').innerText = msg;
+            toast.style.borderLeftColor = sucesso ? '#10b981' : '#ef4444';
+            toast.style.display = 'block';
+            setTimeout(() => { toast.style.display = 'none'; }, 4000);
+        }
+
+        /* ---------- helpers ---------- */
+        const fmt = n => Number(n || 0).toLocaleString('pt-BR');
+        const pct = (parte, total) => total > 0 ? Math.round((parte / total) * 100) + '%' : '0%';
+        const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        const nomeBonito = s => String(s ?? '').replace(/\./g, ' ').trim();
+
+        /* ---------- carga de dados ---------- */
+        function carregarDados() {
+            const dIniIso = document.getElementById('inputDataIni').value;
+            const dFimIso = document.getElementById('inputDataFim').value;
+
+            fetch(`/api/kpi/recebimento?data_ini_iso=${dIniIso}&data_fim_iso=${dFimIso}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status !== 'success') {
+                        exibirToast("Erro", data.message || "Não foi possível carregar os dados", false);
+                        return;
+                    }
+                    ultimosDados = data;
+
+                    atualizarGauge(GAUGES.notas, data.total_notas_pendentes);
+                    atualizarGauge(GAUGES.volumes, data.total_volumes_pendentes);
+
+                    preencherLegenda('Notas', data.conferencia_notas, data.enderecamento_notas);
+                    preencherLegenda('Vol', data.conferencia_volumes, data.enderecamento_volumes);
+
+                    if (data.ultima_atualizacao) {
+                        document.getElementById('txtUltimaAtualizacao').innerText = data.ultima_atualizacao;
+                    }
+
+                    renderizarListas();
+                })
+                .catch(() => exibirToast("Erro", "Falha de conexão com o servidor", false));
+        }
+
+        function preencherLegenda(sufixo, conf, end) {
+            const total = (conf || 0) + (end || 0);
+            document.getElementById('lblConf' + sufixo).innerText = fmt(conf);
+            document.getElementById('lblEnd' + sufixo).innerText = fmt(end);
+            document.getElementById('pctConf' + sufixo).innerText = pct(conf, total);
+            document.getElementById('pctEnd' + sufixo).innerText = pct(end, total);
+            const barra = document.getElementById(sufixo === 'Notas' ? 'barStageNotas' : 'barStageVol');
+            barra.children[0].style.width = total > 0 ? (conf / total * 100) + '%' : '0%';
+            barra.children[1].style.width = total > 0 ? (end / total * 100) + '%' : '0%';
+        }
+
+        /* =====================================================
+           VELOCÍMETROS - AJUSTE AQUI A ESCALA E AS FAIXAS
+           max      = valor final da escala (igual ao da planilha)
+           verde    = até que fração da escala é "Normal"   (0.60 = 60%)
+           amarelo  = até que fração da escala é "Atenção"  (acima disso = "Crítico")
+           ===================================================== */
+        const GAUGES = {
+            notas:   { el: 'gaugeNotas',   chip: 'chipNotas', max: 100,   verde: 0.60, amarelo: 0.75 },
+            volumes: { el: 'gaugeVolumes', chip: 'chipVol',   max: 10000, verde: 0.60, amarelo: 0.80 }
+        };
+        const COR_OK = '#22c55e', COR_ATENCAO = '#facc15', COR_CRITICO = '#ef4444';
+        const G = { cx: 130, cy: 118, r: 92, sw: 18 };
+
+        function gAng(f) { return -135 + 270 * f; }                      // 0 = canto inferior esquerdo, 1 = inferior direito
+        function gPt(f, rad) { const a = gAng(f) * Math.PI / 180; return [G.cx + rad * Math.sin(a), G.cy - rad * Math.cos(a)]; }
+        function gArco(f0, f1, cor) {
+            const [x0, y0] = gPt(f0, G.r), [x1, y1] = gPt(f1, G.r);
+            const grande = (f1 - f0) * 270 > 180 ? 1 : 0;
+            return `<path d="M${x0.toFixed(2)} ${y0.toFixed(2)} A${G.r} ${G.r} 0 ${grande} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}" stroke="${cor}" stroke-width="${G.sw}" fill="none"/>`;
+        }
+
+        function iniciarGauge(c) {
+            let svg = `<svg viewBox="0 0 260 235" role="img">`;
+            svg += gArco(0, c.verde, COR_OK) + gArco(c.verde, c.amarelo, COR_ATENCAO) + gArco(c.amarelo, 1, COR_CRITICO);
+
+            [0, .25, .5, .75, 1].forEach(f => {
+                const [x0, y0] = gPt(f, G.r + G.sw / 2 + 3), [x1, y1] = gPt(f, G.r + G.sw / 2 + 9);
+                svg += `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}" stroke="#6b7280" stroke-width="2"/>`;
+            });
+            const [xa, ya] = gPt(0, G.r + G.sw / 2 + 20), [xb, yb] = gPt(1, G.r + G.sw / 2 + 20);
+            svg += `<text class="g-lbl" x="${xa.toFixed(1)}" y="${(ya + 4).toFixed(1)}" text-anchor="middle">0</text>`;
+            svg += `<text class="g-lbl" x="${xb.toFixed(1)}" y="${(yb + 4).toFixed(1)}" text-anchor="middle">${fmt(c.max)}</text>`;
+
+            svg += `<g class="g-needle" style="transform-origin:${G.cx}px ${G.cy}px; transform:rotate(${gAng(0)}deg)">
+                        <polygon points="${G.cx - 5},${G.cy} ${G.cx},${G.cy - (G.r - 6)} ${G.cx + 5},${G.cy} ${G.cx},${G.cy + 14}" fill="#e2e8f0"/>
+                    </g>
+                    <circle cx="${G.cx}" cy="${G.cy}" r="11" fill="#0f766e" stroke="#e2e8f0" stroke-width="2"/>
+                    <text class="g-val" x="${G.cx}" y="${G.cy + 52}" text-anchor="middle" fill="#f1f5f9">0</text>
+                    </svg>`;
+            document.getElementById(c.el).innerHTML = svg;
+        }
+
+        function statusGauge(f, c) {
+            if (f <= c.verde)   return { txt: 'Normal',  cor: COR_OK };
+            if (f <= c.amarelo) return { txt: 'Atenção', cor: COR_ATENCAO };
+            return { txt: 'Crítico', cor: COR_CRITICO };
+        }
+
+        function atualizarGauge(c, valor) {
+            const box = document.getElementById(c.el);
+            const f = Math.min(Math.max(valor / c.max, 0), 1);          // ponteiro nunca passa do fim da escala
+            const st = statusGauge(valor / c.max, c);
+            const txt = box.querySelector('.g-val');
+            txt.textContent = fmt(valor);
+            txt.setAttribute('fill', st.cor);
+            requestAnimationFrame(() => {
+                box.querySelector('.g-needle').style.transform = `rotate(${gAng(f)}deg)`;
+            });
+            const chip = document.getElementById(c.chip);
+            chip.textContent = st.txt;
+            chip.style.setProperty('--c', st.cor);
+        }
+
+        /* ---------- listas ranqueadas (macro, endereçadores, conferentes) ---------- */
+        function definirOrdem(ord) {
+            ordemAtual = ord;
+            document.querySelectorAll('#segOrdem button').forEach(b => b.classList.toggle('on', b.dataset.ord === ord));
+            if (ultimosDados) renderizarListas();
+        }
+
+        // junta notas + volumes de cada macro num único item
+        function unirMacros(notasList, volsList) {
+            const mapa = new Map();
+            (notasList || []).forEach(i => mapa.set(i.macro, { nome: i.macro, notas: i.valor, volumes: 0 }));
+            (volsList || []).forEach(i => {
+                if (mapa.has(i.macro)) mapa.get(i.macro).volumes = i.valor;
+                else mapa.set(i.macro, { nome: i.macro, notas: 0, volumes: i.valor });
+            });
+            return [...mapa.values()];
+        }
+
+        function celulaBarra(valor, max, tipo) {
+            const zero = !valor;
+            const largura = max > 0 ? (valor / max) * 100 : 0;
+            return `
+                <div class="rk-cell">
+                    <span class="rk-num ${zero ? 'zero' : ''}">${fmt(valor)}</span>
+                    <div class="rk-track"><div class="rk-fill ${tipo} ${zero ? 'zero' : ''}" style="width:${largura}%"></div></div>
+                </div>`;
+        }
+
+        function montarLista(containerId, itens, comPosicao) {
+            const el = document.getElementById(containerId);
+            if (!itens || itens.length === 0) {
+                el.innerHTML = '<div class="rank-vazio">Sem dados no período selecionado.</div>';
+                return;
+            }
+
+            const lista = [...itens].sort((a, b) =>
+                (b[ordemAtual] - a[ordemAtual]) || (b.notas + b.volumes - a.notas - a.volumes) || a.nome.localeCompare(b.nome));
+
+            const maxN = Math.max(...lista.map(i => i.notas), 0);
+            const maxV = Math.max(...lista.map(i => i.volumes), 0);
+            const totN = lista.reduce((s, i) => s + i.notas, 0);
+            const totV = lista.reduce((s, i) => s + i.volumes, 0);
+            const cls = comPosicao ? 'com-pos' : 'sem-pos';
+
+            let html = `<div class="rk-row rk-head ${cls}">`;
+            if (comPosicao) html += '<div></div>';
+            html += '<div class="h nome">Nome</div><div class="h n"><span class="t">Notas</span></div><div class="h v"><span class="t">Volumes</span></div></div>';
+
+            lista.forEach((i, idx) => {
+                html += `<div class="rk-row ${cls}">`;
+                if (comPosicao) html += `<div class="rk-pos">${idx + 1}</div>`;
+                html += `<div class="rk-nome" title="${esc(i.nome)}">${esc(nomeBonito(i.nome))}</div>`;
+                html += celulaBarra(i.notas, maxN, 'n');
+                html += celulaBarra(i.volumes, maxV, 'v');
+                html += '</div>';
+            });
+
+            html += `<div class="rk-row rk-total ${cls}">`;
+            if (comPosicao) html += '<div></div>';
+            html += `<div class="rk-nome">Total</div>
+                     <div class="rk-cell"><span class="rk-num n">${fmt(totN)}</span></div>
+                     <div class="rk-cell"><span class="rk-num v">${fmt(totV)}</span></div></div>`;
+
+            el.innerHTML = html;
+        }
+
+        function renderizarListas() {
+            if (!ultimosDados) return;
+            montarLista('listaMacro', unirMacros(ultimosDados.macro_notas, ultimosDados.macro_volumes), false);
+            montarLista('listaEnd', ultimosDados.produtividade_enderecador, true);
+            montarLista('listaConf', ultimosDados.produtividade_conferente, true);
+        }
+
+        /* ---------- atualização do CLIF (inalterado) ---------- */
+        function iniciarAtualizacaoCLIF() {
+            const btn = document.getElementById('btnAtualizar');
+            const icon = btn.querySelector('i');
+            const box = document.getElementById('hackerContainer');
+            const bar = document.getElementById('barHacker');
+            const pctLbl = document.getElementById('lblStatusPct');
+            const txtLbl = document.getElementById('lblStatusTxt');
+
+            btn.disabled = true;
+            icon.classList.add('fa-spin');
+            box.classList.remove('d-none');
+
+            fetch('/api/solicitar/atualizacao')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        if (timerPolling) clearInterval(timerPolling);
+                        timerPolling = setInterval(() => {
+                            fetch('/api/status/atualizacao')
+                                .then(res => res.json())
+                                .then(st => {
+                                    if (st.pct >= 0) {
+                                       bar.style.width = st.pct + '%';
+                                       pctLbl.innerText = st.pct + '%';
+                                       txtLbl.innerText = st.message || '> Sincronizando...';
+                                    }
+                                    if (st.status === 'CONCLUIDO' || st.pct === 100) {
+                                        clearInterval(timerPolling);
+                                        btn.disabled = false;
+                                        icon.classList.remove('fa-spin');
+                                        exibirToast("Sucesso", "Dados de Recebimento Atualizados!", true);
+                                        setTimeout(() => box.classList.add('d-none'), 2500);
+                                        carregarDados();
+                                    }
+                                    if (st.status === 'ERRO' || st.pct === -1) {
+                                        clearInterval(timerPolling);
+                                        btn.disabled = false;
+                                        icon.classList.remove('fa-spin');
+                                        exibirToast("Erro", st.message || "Erro na sincronização", false);
+                                    }
+                                }).catch(() => {});
+                        }, 2000);
+                    }
+                });
+        }
+    </script>
+</body>
+</html>

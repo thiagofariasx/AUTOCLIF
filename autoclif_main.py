@@ -64,7 +64,7 @@ def pedir_datas_usuario():
 def configurar_driver():
     chrome_options = webdriver.ChromeOptions()
     
-    # 🕵️‍♂️ MODO HEADLESS ATIVADO (Roda 100% invisível em segundo plano para Win+L)
+    # 🕵️‍♂️ MODO HEADLESS ATIVADO (Roda 100% invisível em segundo plano)
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
@@ -101,17 +101,14 @@ def conectar_google_sheets(nome_aba):
     return client.open_by_url(PLANILHA_URL).worksheet(nome_aba)
 
 def enviar_dataframe_para_sheets(sheet, df, limpar=True, celula_inicio='A1'):
-    # Tratamento numérico e infinitos
     df.replace(['inf', 'Inf', 'INF', 'infinity', 'Infinity'], np.inf, inplace=True)
     df.replace(['-inf', '-Inf', '-INF', '-infinity'], -np.inf, inplace=True)
     df.replace([np.inf, -np.inf], 0, inplace=True)
 
-    # Formatação de Datas
     for col in df.columns:
         if pd.api.types.is_datetime64_any_dtype(df[col]):
             df[col] = df[col].dt.strftime('%d/%m/%Y %H:%M:%S')
 
-    # Limpeza e conversão
     for col in df.columns:
         if df[col].dtype == 'object':
             df[col] = df[col].astype(str).str.replace("'", "").str.replace(",", ".").str.strip()
@@ -143,12 +140,15 @@ def enviar_para_google(caminho_excel, nome_aba):
     try:
         print(f"📌 Processando e enviando para a aba '{nome_aba}'...")
         sheet = conectar_google_sheets(nome_aba)
-        df = pd.read_excel(caminho_excel)
+        df = pd.read_excel(caminho_excel, header=1 if nome_aba in ["ENTRADAS PENDENTES", "ENTRADAS CONCLUÍDAS"] else 0)
 
         enviar_dataframe_para_sheets(sheet, df, limpar=True, celula_inicio='A1')
 
         horario_atual = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        sheet.update_acell('Z1', f"Atualizado em: {horario_atual}")
+        try:
+            sheet.update_acell('Z1', f"Atualizado em: {horario_atual}")
+        except Exception:
+            pass
         
         print(f"✅ SUCESSO: Aba '{nome_aba}' atualizada!")
         return df
@@ -176,29 +176,24 @@ def processar_kpi_bloqueados(caminho_excel):
 
         df[col_valor] = pd.to_numeric(df[col_valor], errors='coerce').fillna(0)
 
-        # 1. Resumo por Motivo
         res_motivo = df.groupby(col_motivo).agg(
             QTD_ITENS=(col_codigo, 'count'),
             VALOR_TOTAL=(col_valor, 'sum')
         ).reset_index().sort_values(by='VALOR_TOTAL', ascending=False)
 
-        # 2. Resumo por Usuário
         res_usuario = df.groupby(col_usuario).agg(
             QTD_BLOQUEIOS=(col_codigo, 'count'),
             VALOR_TOTAL=(col_valor, 'sum')
         ).reset_index().sort_values(by='VALOR_TOTAL', ascending=False)
 
-        # 3. Resumo por Projeto
         res_projeto = df.groupby(col_projeto).agg(
             QTD_ITENS=(col_codigo, 'count'),
             VALOR_TOTAL=(col_valor, 'sum')
         ).reset_index().sort_values(by='VALOR_TOTAL', ascending=False)
 
-        # 4. Data do Último Bloqueio registrado
         df_datas = pd.to_datetime(df[col_data], errors='coerce', dayfirst=True)
         data_ultimo_bloqueio = df_datas.max().strftime('%d/%m/%Y %H:%M:%S') if pd.notnull(df_datas.max()) else "N/I"
 
-        # 5. Lista Detalhada Limpa
         df_detalhado = df[[col_data, col_codigo, col_desc, col_projeto, col_motivo, col_usuario, col_detalhe, col_valor]].copy()
         df_detalhado.columns = ['DATA_BLOQUEIO', 'CODIGO', 'DESCRICAO_ITEM', 'PROJETO', 'MOTIVO_BLOQUEIO', 'USUARIO', 'DETALHE_MOTIVO', 'VALOR_TOTAL']
         
@@ -224,11 +219,60 @@ def processar_kpi_bloqueados(caminho_excel):
         sheet_kpi.update_acell('A25', "--- LISTA DETALHADA DOS ITENS BLOQUEADOS ---")
         enviar_dataframe_para_sheets(sheet_kpi, df_detalhado, limpar=False, celula_inicio='A26')
 
-        print(f"✅ SUCESSO: Lista detalhada e Último Bloqueio ({data_ultimo_bloqueio}) enviados para 'KPI_BLOQUEADOS'!")
+        print(f"✅ SUCESSO: KPIs de Bloqueados atualizados!")
 
     except Exception as e:
         print(f"❌ ERRO ao processar KPI de Bloqueados: {str(e)}")
 
+
+def processar_kpi_recebimento():
+    try:
+        print("🧠 Processando inteligência de Produtividade (As Pendências são geridas pelo Sheets!)...")
+        
+        client = gspread.authorize(ServiceAccountCredentials.from_json_keyfile_name(CHAVE_JSON, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]))
+        sh = client.open_by_url(PLANILHA_URL)
+        
+        # 1. Processar SOMENTE Entradas Concluídas (Produtividade)
+        produtividade_enderecador = pd.DataFrame(columns=['Endereçador', 'NOTAS_ENDERECADAS', 'VOLUMES_ENDERECADOS'])
+        try:
+            df_c = pd.DataFrame(sh.worksheet("ENTRADAS CONCLUÍDAS").get_all_values())
+            if len(df_c) > 0:
+                df_c.columns = [str(c).strip() for c in df_c.iloc[0]]
+                df_c = df_c.iloc[1:].copy()
+                
+                col_end = next((c for c in df_c.columns if 'endereçador' in c.lower() or 'enderecador' in c.lower()), None)
+                col_nf_c = next((c for c in df_c.columns if c.upper() == 'NF'), None)
+                col_vol_c = next((c for c in df_c.columns if 'volume' in c.lower()), None)
+                
+                if col_end and col_vol_c and col_nf_c:
+                    df_c[col_vol_c] = pd.to_numeric(df_c[col_vol_c], errors='coerce').fillna(0)
+                    produtividade_enderecador = df_c.drop_duplicates(subset=[col_nf_c]).groupby(col_end).agg(
+                        NOTAS_ENDERECADAS=(col_nf_c, 'nunique'),
+                        VOLUMES_ENDERECADOS=(col_vol_c, 'sum')
+                    ).reset_index().sort_values(by='NOTAS_ENDERECADAS', ascending=False)
+                    
+                    produtividade_enderecador['NOTAS_ENDERECADAS'] = produtividade_enderecador['NOTAS_ENDERECADAS'].astype(int)
+                    produtividade_enderecador['VOLUMES_ENDERECADOS'] = produtividade_enderecador['VOLUMES_ENDERECADOS'].astype(int)
+        except Exception as e:
+            print(f"⚠️ Aviso ao processar Concluídas: {e}")
+
+        # 2. Gravar Produtividade na aba KPI_RECEBIMENTO (Protegendo as fórmulas)
+        sheet_kpi = sh.worksheet("KPI_RECEBIMENTO")
+        
+        # ATENÇÃO AQUI: Limpa apenas as linhas de Produtividade, mantendo suas fórmulas da linha 1 à 4 intactas!
+        sheet_kpi.batch_clear(["A6:C1000"]) 
+        
+        sheet_kpi.update_acell('A6', "--- PRODUTIVIDADE ENDEREÇADOR (CONCLUÍDAS) ---")
+        if not produtividade_enderecador.empty:
+            enviar_dataframe_para_sheets(sheet_kpi, produtividade_enderecador, limpar=False, celula_inicio='A7')
+
+        horario_atual = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+        sheet_kpi.update_acell('G1', f"Atualizado em: {horario_atual}")
+
+        print("✅ SUCESSO: Produtividade gravada preservando as fórmulas do Sheets!")
+
+    except Exception as e:
+        print(f"❌ ERRO CRÍTICO ao processar KPI de Recebimento: {str(e)}")
 
 # --- AUTENTICAÇÃO CLIF ---
 
@@ -288,6 +332,7 @@ def rotina_concluidas(driver, wait, d_ini, d_fim):
     if aguardar_download():
         arquivo = max([os.path.join(DOWNLOAD_PATH, f) for f in os.listdir(DOWNLOAD_PATH)], key=os.path.getctime)
         enviar_para_google(arquivo, "ENTRADAS CONCLUÍDAS")
+        processar_kpi_recebimento()
         os.remove(arquivo)
 
 def rotina_pedidos_aberto(driver, wait):
@@ -364,6 +409,7 @@ def executar_operacao(opcao):
             rotina_bloqueados(driver, wait)
         elif opcao == "2":
             rotina_pendentes(driver, wait)
+            processar_kpi_recebimento()
         elif opcao == "3":
             rotina_concluidas(driver, wait, datas_filtro[0], datas_filtro[1])
         elif opcao == "4":
@@ -380,6 +426,7 @@ def executar_operacao(opcao):
             rotina_pedidos_aberto(driver, wait)
             rotina_saidas_concluidas(driver, wait, datas_filtro[0], datas_filtro[1])
             rotina_coletor(driver, wait, datas_filtro[0], datas_filtro[1])
+            processar_kpi_recebimento()
             print("\n🎉 TODAS AS BASES FORAM ATUALIZADAS COM SUCESSO!")
 
     except Exception as e:
