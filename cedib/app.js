@@ -1,5 +1,3 @@
-const { ipcRenderer } = require('electron');
-
 const SPREADSHEET_ID = '1hlQx9xTAIiQYwNzUG8qDIZNkGM_Ts0t0DGwkEBznXIs';
 const GVIZ_FORMULAS = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=FORMULAS`;
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw-bXcPWmDXLZOz6_x30gFGMjI0A1vrMhc4_opah8kJMY1zQNVktnaQkve5GXYhbc1Z/exec';
@@ -10,10 +8,12 @@ let secondsRemaining = 120;
 
 let isFetching = false;
 let isChangingDate = false;
+
 function localToday() {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
+
 function numericVolume(value) {
   if (value === null || value === undefined || String(value).trim() === '') return null;
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
@@ -22,6 +22,7 @@ function numericVolume(value) {
   const number = Number(text);
   return Number.isFinite(number) ? number : null;
 }
+
 function updateAttendancePercent() {
   const scheduled = numericVolume(document.getElementById('kpiAgendados').innerText);
   const attended = numericVolume(document.getElementById('kpiConcluidos').innerText);
@@ -32,10 +33,12 @@ function updateAttendancePercent() {
   document.getElementById('attendanceArc').style.strokeDasharray = `${ratio === null ? 0 : Math.min(100, ratio)} 100`;
   document.getElementById('attendanceRing').setAttribute('aria-label', valid ? `Atendidos em relação aos agendados: ${label}. ${attended} atendidos e ${scheduled} agendados.` : 'Percentual indisponível: sem base válida de agendamentos.');
 }
+
 function setLoading(value) {
   for (const id of ['datePicker', 'btnToday']) document.getElementById(id).disabled = value;
   document.querySelector('main').setAttribute('aria-busy', String(value));
 }
+
 async function changeConsultationDate(date) {
   if (isFetching || isChangingDate) return;
   isChangingDate = true;
@@ -93,7 +96,6 @@ const crownPlugin = {
 Chart.register(crownPlugin);
 
 document.addEventListener('DOMContentLoaded', () => {
-  setupWindowControls();
   initDatePicker();
   initCharts();
   fetchData();
@@ -105,16 +107,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (pieChart) pieChart.resize();
   });
 });
-
-function setupWindowControls() {
-  const btnMin = document.getElementById('btnMinimize');
-  const btnMax = document.getElementById('btnMaximize');
-  const btnClose = document.getElementById('btnClose');
-
-  if (btnMin) btnMin.addEventListener('click', () => ipcRenderer.send('window-minimize'));
-  if (btnMax) btnMax.addEventListener('click', () => ipcRenderer.send('window-toggle-maximize'));
-  if (btnClose) btnClose.addEventListener('click', () => ipcRenderer.send('window-close'));
-}
 
 function parseDateValue(val) {
   if (!val) return '';
