@@ -296,7 +296,7 @@
             box.classList.remove('d-none');
             txtLbl.innerText = '> Enviando solicitação...';
 
-            fetch('/api/solicitar/atualizacao')
+            fetch('/api/solicitar/atualizacao?tipo=bloqueados')
                 .then(res => res.json())
                 .then(data => {
                     if (data.status === 'success') {
@@ -338,8 +338,13 @@
                     } else {
                         btn.disabled = false;
                         icon.classList.remove('fa-spin');
-                        exibirToast("Erro", "Falha ao solicitar atualização", false);
+                        exibirToast("Aviso", data.message || "Falha ao solicitar atualização", false);
                     }
+                })
+                .catch(() => {
+                    btn.disabled = false;
+                    icon.classList.remove('fa-spin');
+                    exibirToast("Erro", "Falha de conexão com o servidor", false);
                 });
         }
 

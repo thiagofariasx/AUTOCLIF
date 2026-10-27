@@ -18,7 +18,7 @@ from autoclif_main import (
 from selenium.webdriver.support.ui import WebDriverWait
 
 # URL DO SEU SITE ONLINE NO RENDER (Sem a barra no final)
-URL_SERVIDOR_WEB = "http://localhost:5000"
+URL_SERVIDOR_WEB = "https://autoclif.onrender.com"
 
 def conectar_sheets(nome_aba="bloqueados"):
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -38,28 +38,68 @@ def enviar_status_nuvem(pct, msg, status="EM_ANDAMENTO"):
         print(f"⚠️ Erro ao notificar servidor web: {e}")
 
 def verificar_solicitacao_web():
+    """Retorna o TIPO pedido ('bloqueados' ou 'recebimento') ou None se não há pedido."""
     try:
         res = requests.get(f"{URL_SERVIDOR_WEB}/api/status/atualizacao", timeout=5)
         if res.status_code == 200:
             data = res.json()
-            return data.get("status") == "PENDENTE"
+            if data.get("status") == "PENDENTE":
+                return str(data.get("tipo") or "recebimento").strip().lower()
     except Exception:
         pass
-    return False
+    return None
 
-def executar_automacao_clif():
-    print("\n🚀 [AGENTE LOCAL] Sinal de atualização detectado via Web! Iniciando automação de Entradas...")
+def fechar_driver(driver):
+    try:
+        if driver:
+            driver.quit()
+    except Exception:
+        pass
+
+def executar_automacao_bloqueados():
+    print("\n🚀 [AGENTE LOCAL] Pedido do Dash BLOQUEADOS detectado! Iniciando automação...")
     enviar_status_nuvem(10, "⚙️ Inicializando automação e Selenium local...")
-    
+
     limpar_pasta_downloads()
-    
+    driver = None
+
     try:
         driver = configurar_driver()
         wait = WebDriverWait(driver, 45)
-        
+
         enviar_status_nuvem(25, "🔐 Acessando o CLIF para efetuar Login...")
         realizar_login(driver, wait)
-        
+
+        enviar_status_nuvem(45, "📦 Baixando e processando Produtos Bloqueados...")
+        rotina_bloqueados(driver, wait)   # já grava a data de atualização (Z1 e M1) na planilha
+
+        fechar_driver(driver)
+        driver = None
+
+        enviar_status_nuvem(100, "✅ Concluído! Bloqueados 100% atualizado.", status="CONCLUIDO")
+        print("✅ [AGENTE LOCAL] Produtos Bloqueados atualizados com sucesso!")
+
+    except Exception as e:
+        erro_msg = f"❌ Erro: {str(e)}"
+        print(erro_msg)
+        enviar_status_nuvem(-1, erro_msg, status="ERRO")
+    finally:
+        fechar_driver(driver)
+
+def executar_automacao_recebimento():
+    print("\n🚀 [AGENTE LOCAL] Pedido do Dash RECEBIMENTO detectado! Iniciando automação de Entradas...")
+    enviar_status_nuvem(10, "⚙️ Inicializando automação e Selenium local...")
+
+    limpar_pasta_downloads()
+    driver = None
+
+    try:
+        driver = configurar_driver()
+        wait = WebDriverWait(driver, 45)
+
+        enviar_status_nuvem(25, "🔐 Acessando o CLIF para efetuar Login...")
+        realizar_login(driver, wait)
+
         enviar_status_nuvem(45, "📥 Baixando relatório de Entradas Pendentes...")
         rotina_pendentes(driver, wait)
 
@@ -67,7 +107,8 @@ def executar_automacao_clif():
         d_ini, d_fim = obter_datas_mes_atual()
         rotina_concluidas(driver, wait, d_ini, d_fim)
 
-        driver.quit()
+        fechar_driver(driver)
+        driver = None
 
         enviar_status_nuvem(85, "🧠 Processando inteligência de Recebimento no Sheets...")
         processar_kpi_recebimento()
@@ -78,7 +119,7 @@ def executar_automacao_clif():
             sheet_kpi.update_acell('G1', agora_str)
         except Exception:
             pass
-        
+
         enviar_status_nuvem(100, "✅ Concluído! Recebimento 100% atualizado.", status="CONCLUIDO")
         print("✅ [AGENTE LOCAL] Entradas e Recebimento atualizados com sucesso!")
 
@@ -86,18 +127,31 @@ def executar_automacao_clif():
         erro_msg = f"❌ Erro: {str(e)}"
         print(erro_msg)
         enviar_status_nuvem(-1, erro_msg, status="ERRO")
+    finally:
+        fechar_driver(driver)
+
+# Cada botão do site pede um "tipo"; aqui está o que o agente executa para cada um
+ROTINAS = {
+    "bloqueados": executar_automacao_bloqueados,
+    "recebimento": executar_automacao_recebimento,
+}
 
 def escutar_pedidos():
     print("-------------------------------------------------------")
-    print("🤖 AGENTE LOCAL AUTOCLIF (RECEBIMENTO) CONECTADO...")
+    print("🤖 AGENTE LOCAL AUTOCLIF CONECTADO (Bloqueados + Recebimento)...")
     print(f"Monitorando o servidor: {URL_SERVIDOR_WEB}")
     print("-------------------------------------------------------")
-    
+
     while True:
         try:
-            if verificar_solicitacao_web():
-                executar_automacao_clif()
-            
+            tipo = verificar_solicitacao_web()
+            if tipo:
+                rotina = ROTINAS.get(tipo)
+                if rotina:
+                    rotina()
+                else:
+                    enviar_status_nuvem(-1, f"❌ Tipo de atualização desconhecido: '{tipo}'", status="ERRO")
+
             time.sleep(3)
         except Exception as e:
             print(f"⚠️ Erro no ciclo de escuta: {e}")

@@ -528,7 +528,7 @@
             icon.classList.add('fa-spin');
             box.classList.remove('d-none');
 
-            fetch('/api/solicitar/atualizacao')
+            fetch('/api/solicitar/atualizacao?tipo=recebimento')
                 .then(res => res.json())
                 .then(data => {
                     if (data.status === 'success') {
@@ -558,7 +558,18 @@
                                     }
                                 }).catch(() => {});
                         }, 2000);
+                    } else {
+                        btn.disabled = false;
+                        icon.classList.remove('fa-spin');
+                        box.classList.add('d-none');
+                        exibirToast("Aviso", data.message || "Falha ao solicitar atualização", false);
                     }
+                })
+                .catch(() => {
+                    btn.disabled = false;
+                    icon.classList.remove('fa-spin');
+                    box.classList.add('d-none');
+                    exibirToast("Erro", "Falha de conexão com o servidor", false);
                 });
         }
     </script>

@@ -13,10 +13,16 @@ app = Flask(__name__)
 CHAVE_JSON = "chave_google.json"
 PLANILHA_URL = "https://docs.google.com/spreadsheets/d/11tMl509ya0kzIijINjv3KmhaWzTX5GzG6cCD5WEznwo/edit?gid=47982942#gid=47982942"
 
+# Qual rotina o agente local deve rodar (cada botão do site envia o seu "tipo")
+TIPOS_VALIDOS = ("bloqueados", "recebimento")
+TEMPO_MAX_OCUPADO = 600  # segundos: depois disso uma atualização "travada" deixa de bloquear novos pedidos
+
 STATUS_GLOBAL = {
     "status": "PARADO",
     "message": "Aguardando início...",
-    "pct": 0
+    "pct": 0,
+    "tipo": "",
+    "ts": 0
 }
 
 def conectar_planilha():
@@ -232,15 +238,42 @@ def get_kpi_recebimento():
 @app.route('/api/solicitar/atualizacao', methods=['POST', 'GET'])
 def solicitar_atualizacao():
     global STATUS_GLOBAL
-    STATUS_GLOBAL = {"status": "PENDENTE", "message": "📡 Aguardando Agente Local iniciar...", "pct": 5}
-    return jsonify({"status": "success"})
+    tipo = (request.args.get('tipo') or 'recebimento').strip().lower()
+    if tipo not in TIPOS_VALIDOS:
+        return jsonify({"status": "error", "message": "Tipo de atualização inválido."}), 400
+
+    # Só existe UM agente local: não deixa um botão atropelar a atualização do outro
+    ocupado = (
+        STATUS_GLOBAL.get("status") in ("PENDENTE", "EM_ANDAMENTO")
+        and (time.time() - STATUS_GLOBAL.get("ts", 0)) < TEMPO_MAX_OCUPADO
+    )
+    if ocupado:
+        return jsonify({
+            "status": "busy",
+            "message": f"Já existe uma atualização de '{STATUS_GLOBAL.get('tipo', '')}' em andamento. Aguarde terminar."
+        })
+
+    STATUS_GLOBAL = {
+        "status": "PENDENTE",
+        "message": "📡 Aguardando Agente Local iniciar...",
+        "pct": 5,
+        "tipo": tipo,
+        "ts": time.time()
+    }
+    return jsonify({"status": "success", "tipo": tipo})
 
 @app.route('/api/atualizar/status-local', methods=['POST'])
 def atualizar_status_local():
     global STATUS_GLOBAL
     data = request.json
     if data:
-        STATUS_GLOBAL = {"status": data.get("status", "EM_ANDAMENTO"), "message": data.get("message", ""), "pct": int(data.get("pct", 0))}
+        STATUS_GLOBAL = {
+            "status": data.get("status", "EM_ANDAMENTO"),
+            "message": data.get("message", ""),
+            "pct": int(data.get("pct", 0)),
+            "tipo": STATUS_GLOBAL.get("tipo", ""),   # mantém o tipo que foi solicitado
+            "ts": time.time()
+        }
     return jsonify({"status": "recebido"})
 
 @app.route('/api/status/atualizacao', methods=['GET'])
