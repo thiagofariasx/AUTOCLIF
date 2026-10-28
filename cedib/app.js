@@ -27,35 +27,47 @@ function updateAttendancePercent() {
   const scheduled = numericVolume(document.getElementById('kpiAgendados').innerText);
   const attended = numericVolume(document.getElementById('kpiConcluidos').innerText);
   const valid = scheduled !== null && scheduled > 0 && attended !== null && attended >= 0;
-  const ratio = valid ? attended / scheduled * 100 : null;
+  const ratio = valid ? (attended / scheduled) * 100 : null;
   const label = ratio === null ? '—' : `${ratio.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}%`;
-  document.getElementById('attendancePercent').innerText = label;
-  document.getElementById('attendanceArc').style.strokeDasharray = `${ratio === null ? 0 : Math.min(100, ratio)} 100`;
-  document.getElementById('attendanceRing').setAttribute('aria-label', valid ? `Atendidos em relação aos agendados: ${label}. ${attended} atendidos e ${scheduled} agendados.` : 'Percentual indisponível: sem base válida de agendamentos.');
+  
+  const percentEl = document.getElementById('attendancePercent');
+  const arcEl = document.getElementById('attendanceArc');
+  const ringEl = document.getElementById('attendanceRing');
+
+  if (percentEl) percentEl.innerText = label;
+  if (arcEl) arcEl.style.strokeDasharray = `${ratio === null ? 0 : Math.min(100, ratio)} 100`;
+  if (ringEl) ringEl.setAttribute('aria-label', valid ? `Atendidos em relação aos agendados: ${label}. ${attended} atendidos e ${scheduled} agendados.` : 'Percentual indisponível: sem base válida de agendamentos.');
 }
 
 function setLoading(value) {
-  for (const id of ['datePicker', 'btnToday']) document.getElementById(id).disabled = value;
-  document.querySelector('main').setAttribute('aria-busy', String(value));
+  const picker = document.getElementById('datePicker');
+  const btnToday = document.getElementById('btnToday');
+  if (picker) picker.disabled = value;
+  if (btnToday) btnToday.disabled = value;
+  const mainEl = document.querySelector('main');
+  if (mainEl) mainEl.setAttribute('aria-busy', String(value));
 }
 
 async function changeConsultationDate(date) {
   if (isFetching || isChangingDate) return;
   isChangingDate = true;
   setLoading(true);
-  document.getElementById('lastUpdate').innerText = 'Atualizando data de consulta…';
+  const lastUpdate = document.getElementById('lastUpdate');
+  if (lastUpdate) lastUpdate.innerText = 'Atualizando data de consulta…';
   try {
     await updateSheetDate(formatDateToBR(date));
     await fetchData(true);
   } catch (error) {
     console.error('Erro ao alterar a consulta:', error);
-    document.getElementById('lastUpdate').innerText = 'Falha na consulta · os valores exibidos são da última atualização confirmada';
-  } finally { isChangingDate = false; setLoading(false); }
+    if (lastUpdate) lastUpdate.innerText = 'Falha na consulta · os valores exibidos são da última atualização confirmada';
+  } finally { 
+    isChangingDate = false; 
+    setLoading(false); 
+  }
 }
 
 Chart.register(ChartDataLabels);
 
-// CÁLCULO DE FONTE DINÂMICA E ADAPTATIVA
 function getAdaptiveFontSize(context, baseFactor = 0.04, minSize = 10, maxSize = 18) {
   const chart = context.chart;
   const width = chart.width || 300;
@@ -65,7 +77,6 @@ function getAdaptiveFontSize(context, baseFactor = 0.04, minSize = 10, maxSize =
   return Math.max(minSize, Math.min(maxSize, calculated));
 }
 
-// PLUGIN DA COROA NO LÍDER
 const crownPlugin = {
   id: 'crownPlugin',
   afterDraw: (chart) => {
@@ -146,7 +157,11 @@ function initDatePicker() {
     datePicker.addEventListener('change', () => {
       if (!datePicker.value) { datePicker.value = localToday(); return; }
       if (datePicker.value !== localToday()) startReturnTimer();
-      else { clearInterval(returnTimer); document.getElementById('status-timer').classList.add('hidden'); }
+      else { 
+        clearInterval(returnTimer); 
+        const timerElem = document.getElementById('status-timer');
+        if (timerElem) timerElem.classList.add('hidden'); 
+      }
       changeConsultationDate(datePicker.value);
     });
   }
@@ -195,10 +210,8 @@ function resetToToday() {
 }
 
 function initCharts() {
-  // 1. GRÁFICO AGENDADO VS ATENDIDO REAL (LINHA)
   const ctxLine = document.getElementById('chartAgendadoXAtendido').getContext('2d');
   
-  // Gradientes de fundo
   const gradBlue = ctxLine.createLinearGradient(0, 0, 0, 300);
   gradBlue.addColorStop(0, 'rgba(59, 130, 246, 0.3)');
   gradBlue.addColorStop(1, 'rgba(59, 130, 246, 0.0)');
@@ -213,150 +226,65 @@ function initCharts() {
       labels: [],
       datasets: [
         { 
-          label: 'Agendados', 
-          data: [], 
-          borderColor: '#3b82f6', 
-          backgroundColor: gradBlue, 
-          fill: true, 
-          tension: 0.35, 
-          pointRadius: 5,
-          pointHoverRadius: 7,
-          pointBackgroundColor: '#3b82f6',
-          pointBorderColor: '#ffffff',
-          pointBorderWidth: 2,
-          clip: false,
-          datalabels: { 
-            align: 'top', 
-            anchor: 'end',
-            color: '#60a5fa',
-            backgroundColor: 'rgba(15, 23, 42, 0.85)',
-            borderRadius: 4,
-            padding: { top: 2, bottom: 2, left: 5, right: 5 }
-          }
+          label: 'Agendados', data: [], borderColor: '#3b82f6', backgroundColor: gradBlue, fill: true, tension: 0.35, 
+          pointRadius: 5, pointHoverRadius: 7, pointBackgroundColor: '#3b82f6', pointBorderColor: '#ffffff', pointBorderWidth: 2, clip: false,
+          datalabels: { align: 'top', anchor: 'end', color: '#60a5fa', backgroundColor: 'rgba(15, 23, 42, 0.85)', borderRadius: 4, padding: { top: 2, bottom: 2, left: 5, right: 5 } }
         },
         { 
-          label: 'Atendidos', 
-          data: [], 
-          borderColor: '#10b981', 
-          backgroundColor: gradGreen, 
-          fill: true, 
-          tension: 0.35, 
-          pointRadius: 5,
-          pointHoverRadius: 7,
-          pointBackgroundColor: '#10b981',
-          pointBorderColor: '#ffffff',
-          pointBorderWidth: 2,
-          clip: false,
-          datalabels: { 
-            align: 'bottom', 
-            anchor: 'start',
-            color: '#34d399',
-            backgroundColor: 'rgba(15, 23, 42, 0.85)',
-            borderRadius: 4,
-            padding: { top: 2, bottom: 2, left: 5, right: 5 }
-          }
+          label: 'Atendidos', data: [], borderColor: '#10b981', backgroundColor: gradGreen, fill: true, tension: 0.35, 
+          pointRadius: 5, pointHoverRadius: 7, pointBackgroundColor: '#10b981', pointBorderColor: '#ffffff', pointBorderWidth: 2, clip: false,
+          datalabels: { align: 'bottom', anchor: 'start', color: '#34d399', backgroundColor: 'rgba(15, 23, 42, 0.85)', borderRadius: 4, padding: { top: 2, bottom: 2, left: 5, right: 5 } }
         }
       ]
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
+      responsive: true, maintainAspectRatio: false,
       layout: { padding: { top: 25, bottom: 10, left: 15, right: 15 } },
       plugins: {
         legend: { labels: { color: '#94a3b8', font: { size: 11, weight: 'bold' }, usePointStyle: true } },
-        datalabels: {
-          font: (context) => ({
-            weight: '900',
-            size: getAdaptiveFontSize(context, 0.038, 11, 15)
-          })
-        }
+        datalabels: { font: (context) => ({ weight: '900', size: getAdaptiveFontSize(context, 0.038, 11, 15) }) }
       },
       scales: {
         x: { ticks: { autoSkip: false, color: '#94a3b8', font: { size: 10, weight: 'bold' } }, grid: { color: '#1e293b' } },
-        y: { 
-          grace: '18%',
-          ticks: { color: '#64748b', font: { size: 10 } }, 
-          grid: { color: '#1e293b' } 
-        }
+        y: { grace: '18%', ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: '#1e293b' } }
       }
     }
   });
 
-  // 2. GRÁFICO DE PRODUTIVIDADE (BARRAS)
   const ctxBar = document.getElementById('chartProdutividade').getContext('2d');
   barChart = new Chart(ctxBar, {
     type: 'bar',
-    data: {
-      labels: [],
-      datasets: [{ 
-        label: 'Atendimentos', 
-        data: [], 
-        backgroundColor: '#2563eb', 
-        borderRadius: 6,
-        borderSkipped: false,
-        clip: false 
-      }]
-    },
+    data: { labels: [], datasets: [{ label: 'Atendimentos', data: [], backgroundColor: '#2563eb', borderRadius: 6, borderSkipped: false, clip: false }] },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
+      responsive: true, maintainAspectRatio: false,
       layout: { padding: { top: 22, bottom: 0 } },
       plugins: {
         legend: { display: false },
-        datalabels: {
-          color: '#ffffff',
-          anchor: 'center',
-          align: 'center',
-          font: (context) => ({
-            weight: '900',
-            size: getAdaptiveFontSize(context, 0.045, 11, 18)
-          })
-        }
+        datalabels: { color: '#ffffff', anchor: 'center', align: 'center', font: (context) => ({ weight: '900', size: getAdaptiveFontSize(context, 0.045, 11, 18) }) }
       },
       scales: {
         x: { ticks: { autoSkip: false, minRotation: 0, maxRotation: 0, color: '#ffffff', font: { size: 11, weight: 'bold' } }, grid: { display: false } },
-        y: { 
-          grace: '25%',
-          ticks: { color: '#64748b', font: { size: 10 } }, 
-          grid: { color: '#1e293b' } 
-        }
+        y: { grace: '25%', ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: '#1e293b' } }
       }
     }
   });
 
-  // 3. GRÁFICO DE PIZZA (TIPO DE ATENDIMENTO)
   const ctxPie = document.getElementById('chartTipos').getContext('2d');
   pieChart = new Chart(ctxPie, {
     type: 'pie',
-    data: {
-      labels: [],
-      datasets: [{ 
-        data: [], 
-        backgroundColor: ['#0284c7', '#3b82f6', '#f59e0b', '#ec4899', '#10b981'],
-        borderWidth: 2,
-        borderColor: '#0b1120',
-        clip: false 
-      }]
-    },
+    data: { labels: [], datasets: [{ data: [], backgroundColor: ['#0284c7', '#3b82f6', '#f59e0b', '#ec4899', '#10b981'], borderWidth: 2, borderColor: '#0b1120', clip: false }] },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
+      responsive: true, maintainAspectRatio: false,
       layout: { padding: 12 },
       plugins: {
-        legend: { 
-          position: 'bottom', 
-          labels: { color: '#cbd5e1', font: { size: 9, weight: 'bold' }, padding: 8, usePointStyle: true } 
-        },
+        legend: { position: 'bottom', labels: { color: '#cbd5e1', font: { size: 9, weight: 'bold' }, padding: 8, usePointStyle: true } },
         datalabels: {
           color: '#ffffff',
-          font: (context) => ({
-            weight: '900',
-            size: getAdaptiveFontSize(context, 0.045, 10, 16)
-          }),
+          font: (context) => ({ weight: '900', size: getAdaptiveFontSize(context, 0.045, 10, 16) }),
           formatter: (value, ctx) => {
             let sum = ctx.dataset.data.reduce((a, b) => a + b, 0);
             if (sum === 0) return '0\n(0%)';
-            let percentage = (value * 100 / sum).toFixed(1) + "%";
+            let percentage = ((value * 100) / sum).toFixed(1) + "%";
             return `${value}\n(${percentage})`;
           }
         }
@@ -376,27 +304,37 @@ async function fetchData(force = false) {
     ]);
     const failure = results.find(result => result.status === 'rejected');
     if (failure) throw failure.reason;
-    const jsonB2 = results[0].value, textFormulas = results[1].value;
+    
+    const jsonB2 = results[0].value;
+    const textFormulas = results[1].value;
+    
     const wrapped = textFormulas.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\);?\s*$/);
     const jsonFormulas = JSON.parse(wrapped ? wrapped[1] : textFormulas);
     const rows = jsonFormulas.table?.rows;
-    if (!Array.isArray(rows) || numericVolume(jsonB2?.b2) === null) throw new Error('Consulta inválida');
-    document.getElementById('kpiAgendados').innerText = String(jsonB2.b2);
+    if (!Array.isArray(rows)) throw new Error('Consulta inválida');
+    
+    const kpiAgendados = document.getElementById('kpiAgendados');
+    if (kpiAgendados) kpiAgendados.innerText = String(jsonB2.b2 ?? '0');
 
-    // Status
-    document.getElementById('kpiConcluidos').innerText = getDirectVal(rows, 1, 7) || '0'; // H2
-    document.getElementById('kpiFila').innerText = getDirectVal(rows, 2, 7) || '0';       // H3
+    const kpiConcluidos = document.getElementById('kpiConcluidos');
+    const kpiFila = document.getElementById('kpiFila');
+    if (kpiConcluidos) kpiConcluidos.innerText = getDirectVal(rows, 1, 7) || '0'; // H2
+    if (kpiFila) kpiFila.innerText = getDirectVal(rows, 2, 7) || '0';       // H3
 
     updateAttendancePercent();
 
-    // Médias
-    document.getElementById('mediaEsperaDia').innerText = parseTimeValue(getRawVal(rows, 1, 15)); // P2
-    document.getElementById('mediaGuicheDia').innerText = parseTimeValue(getRawVal(rows, 1, 16)); // Q2
-    document.getElementById('mediaEsperaGeral').innerText = parseTimeValue(getRawVal(rows, 1, 18)); // S2
-    document.getElementById('mediaAtendimentoGeral').innerText = parseTimeValue(getRawVal(rows, 1, 19)); // T2
-    document.getElementById('mediaGeral').innerText = parseTimeValue(getRawVal(rows, 1, 20)); // U2
+    const mediaEsperaDia = document.getElementById('mediaEsperaDia');
+    const mediaGuicheDia = document.getElementById('mediaGuicheDia');
+    const mediaEsperaGeral = document.getElementById('mediaEsperaGeral');
+    const mediaAtendimentoGeral = document.getElementById('mediaAtendimentoGeral');
+    const mediaGeral = document.getElementById('mediaGeral');
 
-    // Agendado x Atendido
+    if (mediaEsperaDia) mediaEsperaDia.innerText = parseTimeValue(getRawVal(rows, 1, 15)); // P2
+    if (mediaGuicheDia) mediaGuicheDia.innerText = parseTimeValue(getRawVal(rows, 1, 16)); // Q2
+    if (mediaEsperaGeral) mediaEsperaGeral.innerText = parseTimeValue(getRawVal(rows, 1, 18)); // S2
+    if (mediaAtendimentoGeral) mediaAtendimentoGeral.innerText = parseTimeValue(getRawVal(rows, 1, 19)); // T2
+    if (mediaGeral) mediaGeral.innerText = parseTimeValue(getRawVal(rows, 1, 20)); // U2
+
     const lineLabels = [];
     const agendados = [];
     const atendidos = [];
@@ -413,7 +351,6 @@ async function fetchData(force = false) {
     lineChart.data.datasets[1].data = atendidos;
     lineChart.update();
 
-    // Produtividade
     const barLabels = [];
     const barData = [];
     for (let i = 1; i < rows.length; i++) {
@@ -424,14 +361,13 @@ async function fetchData(force = false) {
         barData.push(qtd);
       }
     }
-    const maxVal = Math.max(...barData);
+    const maxVal = barData.length > 0 ? Math.max(...barData) : 0;
     const bgColors = barData.map(val => val === maxVal && maxVal > 0 ? '#f59e0b' : '#2563eb');
     barChart.data.labels = barLabels;
     barChart.data.datasets[0].data = barData;
     barChart.data.datasets[0].backgroundColor = bgColors;
     barChart.update();
 
-    // Tipos
     const pieLabels = [];
     const pieData = [];
     for (let i = 1; i < rows.length; i++) {
@@ -446,7 +382,6 @@ async function fetchData(force = false) {
     pieChart.data.datasets[0].data = pieData;
     pieChart.update();
 
-    // RODAPÉ: Indicador AO VIVO + Horário
     const lastUpdateElem = document.getElementById('lastUpdate');
     if (lastUpdateElem) {
       lastUpdateElem.innerHTML = `
@@ -464,8 +399,12 @@ async function fetchData(force = false) {
 
   } catch (err) {
     console.error('Erro ao atualizar dados:', err);
-    document.getElementById('lastUpdate').innerText = 'Falha na atualização · exibindo os últimos dados confirmados';
-  } finally { isFetching = false; if (!isChangingDate) setLoading(false); }
+    const lastUpdateElem = document.getElementById('lastUpdate');
+    if (lastUpdateElem) lastUpdateElem.innerText = 'Falha na atualização · exibindo os últimos dados confirmados';
+  } finally { 
+    isFetching = false; 
+    if (!isChangingDate) setLoading(false); 
+  }
 }
 
 function getDirectVal(rows, rowIndex, colIndex) {
@@ -487,3 +426,4 @@ function getRawVal(rows, rowIndex, colIndex) {
   } catch (e) {
     return null;
   }
+}
