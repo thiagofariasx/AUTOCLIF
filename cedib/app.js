@@ -77,6 +77,11 @@ function getAdaptiveFontSize(context, baseFactor = 0.04, minSize = 10, maxSize =
   return Math.max(minSize, Math.min(maxSize, calculated));
 }
 
+// Cores do ranking de produtividade
+const COR_PODIO = { 1: '#fbbf24', 2: '#cbd5e1', 3: '#cd7f32' };   // 1º ouro, 2º prata, 3º bronze
+const COR_BARRA_PADRAO = '#2563eb';                                // 4º em diante
+const COR_PODIO_CLARAS = ['#fbbf24', '#cbd5e1'];                   // fundos claros: número escuro para dar leitura
+
 const crownPlugin = {
   id: 'crownPlugin',
   afterDraw: (chart) => {
@@ -260,7 +265,13 @@ function initCharts() {
       layout: { padding: { top: 22, bottom: 0 } },
       plugins: {
         legend: { display: false },
-        datalabels: { color: '#ffffff', anchor: 'center', align: 'center', font: (context) => ({ weight: '900', size: getAdaptiveFontSize(context, 0.045, 11, 18) }) }
+        datalabels: {
+          color: (context) => {
+            const bg = context.dataset.backgroundColor;
+            const cor = Array.isArray(bg) ? bg[context.dataIndex] : bg;
+            return COR_PODIO_CLARAS.includes(cor) ? '#0b1120' : '#ffffff';
+          },
+          anchor: 'center', align: 'center', font: (context) => ({ weight: '900', size: getAdaptiveFontSize(context, 0.045, 11, 18) }) }
       },
       scales: {
         x: { ticks: { autoSkip: false, minRotation: 0, maxRotation: 0, color: '#ffffff', font: { size: 11, weight: 'bold' } }, grid: { display: false } },
@@ -351,18 +362,22 @@ async function fetchData(force = false) {
     lineChart.data.datasets[1].data = atendidos;
     lineChart.update();
 
-    const barLabels = [];
-    const barData = [];
+    // Ranking sempre do 1º ao último (maior para menor); empate no valor divide a mesma posição
+    const ranking = [];
     for (let i = 1; i < rows.length; i++) {
       const atendente = getDirectVal(rows, i, 9); // J
       const qtd = parseFloat(getDirectVal(rows, i, 10)); // K
-      if (atendente && !isNaN(qtd)) {
-        barLabels.push(atendente);
-        barData.push(qtd);
-      }
+      if (atendente && !isNaN(qtd)) ranking.push({ nome: atendente, qtd });
     }
-    const maxVal = barData.length > 0 ? Math.max(...barData) : 0;
-    const bgColors = barData.map(val => val === maxVal && maxVal > 0 ? '#f59e0b' : '#2563eb');
+    ranking.sort((a, b) => (b.qtd - a.qtd) || String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
+
+    const barLabels = ranking.map(r => r.nome);
+    const barData = ranking.map(r => r.qtd);
+    const bgColors = ranking.map(r => {
+      if (r.qtd <= 0) return COR_BARRA_PADRAO;                         // sem atendimento não ganha medalha
+      const posicao = ranking.findIndex(x => x.qtd === r.qtd) + 1;      // 1, 2, 3... (empate = mesma posição)
+      return COR_PODIO[posicao] || COR_BARRA_PADRAO;
+    });
     barChart.data.labels = barLabels;
     barChart.data.datasets[0].data = barData;
     barChart.data.datasets[0].backgroundColor = bgColors;
