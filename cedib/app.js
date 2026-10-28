@@ -1,3 +1,5 @@
+const { ipcRenderer } = require('electron');
+
 const SPREADSHEET_ID = '1hlQx9xTAIiQYwNzUG8qDIZNkGM_Ts0t0DGwkEBznXIs';
 const GVIZ_FORMULAS = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=FORMULAS`;
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw-bXcPWmDXLZOz6_x30gFGMjI0A1vrMhc4_opah8kJMY1zQNVktnaQkve5GXYhbc1Z/exec';
@@ -8,12 +10,10 @@ let secondsRemaining = 120;
 
 let isFetching = false;
 let isChangingDate = false;
-
 function localToday() {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
-
 function numericVolume(value) {
   if (value === null || value === undefined || String(value).trim() === '') return null;
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
@@ -22,7 +22,6 @@ function numericVolume(value) {
   const number = Number(text);
   return Number.isFinite(number) ? number : null;
 }
-
 function updateAttendancePercent() {
   const scheduled = numericVolume(document.getElementById('kpiAgendados').innerText);
   const attended = numericVolume(document.getElementById('kpiConcluidos').innerText);
@@ -33,12 +32,10 @@ function updateAttendancePercent() {
   document.getElementById('attendanceArc').style.strokeDasharray = `${ratio === null ? 0 : Math.min(100, ratio)} 100`;
   document.getElementById('attendanceRing').setAttribute('aria-label', valid ? `Atendidos em relação aos agendados: ${label}. ${attended} atendidos e ${scheduled} agendados.` : 'Percentual indisponível: sem base válida de agendamentos.');
 }
-
 function setLoading(value) {
   for (const id of ['datePicker', 'btnToday']) document.getElementById(id).disabled = value;
   document.querySelector('main').setAttribute('aria-busy', String(value));
 }
-
 async function changeConsultationDate(date) {
   if (isFetching || isChangingDate) return;
   isChangingDate = true;
@@ -96,6 +93,7 @@ const crownPlugin = {
 Chart.register(crownPlugin);
 
 document.addEventListener('DOMContentLoaded', () => {
+  setupWindowControls();
   initDatePicker();
   initCharts();
   fetchData();
@@ -107,6 +105,16 @@ document.addEventListener('DOMContentLoaded', () => {
     if (pieChart) pieChart.resize();
   });
 });
+
+function setupWindowControls() {
+  const btnMin = document.getElementById('btnMinimize');
+  const btnMax = document.getElementById('btnMaximize');
+  const btnClose = document.getElementById('btnClose');
+
+  if (btnMin) btnMin.addEventListener('click', () => ipcRenderer.send('window-minimize'));
+  if (btnMax) btnMax.addEventListener('click', () => ipcRenderer.send('window-toggle-maximize'));
+  if (btnClose) btnClose.addEventListener('click', () => ipcRenderer.send('window-close'));
+}
 
 function parseDateValue(val) {
   if (!val) return '';
@@ -414,18 +422,22 @@ async function fetchData(force = false) {
     lineChart.update();
 
     // Produtividade
-    const barLabels = [];
-    const barData = [];
+    // Monta a lista, ordena do maior para o menor (1º, 2º, 3º...)
+    const ranking = [];
     for (let i = 1; i < rows.length; i++) {
       const atendente = getDirectVal(rows, i, 9); // J
       const qtd = parseFloat(getDirectVal(rows, i, 10)); // K
       if (atendente && !isNaN(qtd)) {
-        barLabels.push(atendente);
-        barData.push(qtd);
+        ranking.push({ nome: atendente, qtd });
       }
     }
-    const maxVal = Math.max(...barData);
-    const bgColors = barData.map(val => val === maxVal && maxVal > 0 ? '#f59e0b' : '#2563eb');
+    ranking.sort((a, b) => b.qtd - a.qtd);
+
+    const barLabels = ranking.map(r => r.nome);
+    const barData = ranking.map(r => r.qtd);
+    // 1º ouro, 2º prata, 3º bronze, demais azul
+    const medalColors = ['#f59e0b', '#9ca3af', '#b45309'];
+    const bgColors = barData.map((val, idx) => (idx < 3 && val > 0) ? medalColors[idx] : '#2563eb');
     barChart.data.labels = barLabels;
     barChart.data.datasets[0].data = barData;
     barChart.data.datasets[0].backgroundColor = bgColors;
