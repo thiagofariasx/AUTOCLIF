@@ -2,7 +2,7 @@ const SPREADSHEET_ID = '1hlQx9xTAIiQYwNzUG8qDIZNkGM_Ts0t0DGwkEBznXIs';
 const GVIZ_FORMULAS = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=FORMULAS`;
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw-bXcPWmDXLZOz6_x30gFGMjI0A1vrMhc4_opah8kJMY1zQNVktnaQkve5GXYhbc1Z/exec';
 
-let lineChart, barChart, pieChart;
+let lineChart, barChart, pieChart, originChart;
 let returnTimer = null;
 let secondsRemaining = 120;
 
@@ -81,6 +81,38 @@ function getAdaptiveFontSize(context, baseFactor = 0.04, minSize = 10, maxSize =
 const COR_PODIO = { 1: '#fbbf24', 2: '#cbd5e1', 3: '#cd7f32' };   // 1º ouro, 2º prata, 3º bronze
 const COR_BARRA_PADRAO = '#2563eb';                                // 4º em diante
 const COR_PODIO_CLARAS = ['#fbbf24', '#cbd5e1'];                   // fundos claros: número escuro para dar leitura
+
+// Gráfico "Origem dos Atendimentos" (aba FORMULAS: H7 = faltosos, H8 = agendados)
+const COR_AGENDADOS = '#3b82f6';   // mesmo azul de "Agendados" no gráfico de linhas
+const COR_FALTOSOS = '#f43f5e';
+
+// Escreve o total no buraco da rosquinha (só no gráfico chartOrigem)
+const centerTotalPlugin = {
+  id: 'centerTotalPlugin',
+  afterDraw: (chart) => {
+    if (!chart.canvas || chart.canvas.id !== 'chartOrigem') return;
+    const area = chart.chartArea;
+    if (!area) return;
+    const arc = chart.getDatasetMeta(0).data[0];
+    const cx = (area.left + area.right) / 2;
+    const cy = (area.top + area.bottom) / 2;
+    const inner = arc && arc.innerRadius > 0 ? arc.innerRadius : Math.min(area.right - area.left, area.bottom - area.top) * 0.28;
+    const total = (chart.data.datasets[0].data || []).reduce((a, b) => a + (Number(b) || 0), 0);
+
+    const ctx = chart.ctx;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = `900 ${Math.max(20, Math.min(inner * 0.75, 52))}px sans-serif`;
+    ctx.fillText(total.toLocaleString('pt-BR'), cx, cy - inner * 0.1);
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = `700 ${Math.max(9, Math.min(inner * 0.2, 14))}px sans-serif`;
+    ctx.fillText('atendimentos', cx, cy + inner * 0.42);
+    ctx.restore();
+  }
+};
+Chart.register(centerTotalPlugin);
 
 const crownPlugin = {
   id: 'crownPlugin',
@@ -302,6 +334,36 @@ function initCharts() {
       }
     }
   });
+
+  // Origem dos atendimentos: Agendados x Faltosos (fora da agenda)
+  const canvasOrigem = document.getElementById('chartOrigem');
+  if (canvasOrigem) {
+    originChart = new Chart(canvasOrigem.getContext('2d'), {
+      type: 'doughnut',
+      data: {
+        labels: ['Agendados', 'Faltosos (fora da agenda)'],
+        datasets: [{ data: [0, 0], backgroundColor: [COR_AGENDADOS, COR_FALTOSOS], borderWidth: 2, borderColor: '#0b1120', clip: false }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        cutout: '58%',
+        layout: { padding: 12 },
+        plugins: {
+          legend: { position: 'bottom', labels: { color: '#cbd5e1', font: { size: 11, weight: 'bold' }, padding: 10, usePointStyle: true } },
+          datalabels: {
+            display: (context) => Number(context.dataset.data[context.dataIndex]) > 0,
+            color: '#ffffff',
+            font: (context) => ({ weight: '900', size: getAdaptiveFontSize(context, 0.04, 10, 15) }),
+            formatter: (value, ctx) => {
+              const sum = ctx.dataset.data.reduce((a, b) => a + b, 0);
+              if (sum === 0) return '0';
+              return `${value}\n(${((value * 100) / sum).toFixed(1)}%)`;
+            }
+          }
+        }
+      }
+    });
+  }
 }
 
 async function fetchData(force = false) {
@@ -396,6 +458,14 @@ async function fetchData(force = false) {
     pieChart.data.labels = pieLabels;
     pieChart.data.datasets[0].data = pieData;
     pieChart.update();
+
+    // Origem dos atendimentos: H7 = faltosos (fora da agenda) | H8 = agendados  (mesmo padrão do H2/H3 acima)
+    if (originChart) {
+      const faltosos = Math.max(0, numericVolume(getRawVal(rows, 6, 7)) ?? 0);   // H7
+      const agendadosAtendidos = Math.max(0, numericVolume(getRawVal(rows, 7, 7)) ?? 0);   // H8
+      originChart.data.datasets[0].data = [agendadosAtendidos, faltosos];
+      originChart.update();
+    }
 
     const lastUpdateElem = document.getElementById('lastUpdate');
     if (lastUpdateElem) {

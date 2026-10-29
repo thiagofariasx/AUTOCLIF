@@ -204,8 +204,8 @@
     <!-- METADE INFERIOR (PRODUTIVIDADE ESTICADA + PIZZA) -->
     <div class="grid grid-cols-12 gap-3 min-h-0">
       
-      <!-- RETÂNGULO VERMELHO INFERIOR: GRÁFICO DE PRODUTIVIDADE ESTICADO ATÉ O CANTO ESQUERDO (8 Colunas) -->
-      <div class="col-span-8 bg-slate-900/80 border border-slate-800 rounded-xl p-3 flex flex-col min-h-0 shadow-lg">
+      <!-- RETÂNGULO VERMELHO INFERIOR: GRÁFICO DE PRODUTIVIDADE ESTICADO ATÉ O CANTO ESQUERDO (6 Colunas) -->
+      <div class="col-span-6 bg-slate-900/80 border border-slate-800 rounded-xl p-3 flex flex-col min-h-0 shadow-lg">
         <h2 class="text-xs font-black text-blue-400 uppercase tracking-wider mb-1">
           Produtividade por Atendente / Guichê
         </h2>
@@ -214,8 +214,18 @@
         </div>
       </div>
 
-      <!-- QUADRADO VERDE DIREITO: GRÁFICO DE TIPO DE ATENDIMENTO - PIZZA (4 Colunas) -->
-      <div class="col-span-4 bg-slate-900/80 border border-slate-800 rounded-xl p-3 flex flex-col min-h-0 shadow-lg">
+      <!-- NOVO: ORIGEM DOS ATENDIMENTOS - AGENDADOS x FALTOSOS (3 Colunas) -->
+      <div class="col-span-3 bg-slate-900/80 border border-slate-800 rounded-xl p-3 flex flex-col min-h-0 shadow-lg">
+        <h2 class="text-xs font-black text-blue-400 uppercase tracking-wider mb-1">
+          Origem dos Atendimentos
+        </h2>
+        <div class="flex-1 w-full min-h-0 relative">
+          <canvas id="chartOrigem"></canvas>
+        </div>
+      </div>
+
+      <!-- QUADRADO VERDE DIREITO: GRÁFICO DE TIPO DE ATENDIMENTO - PIZZA (3 Colunas) -->
+      <div class="col-span-3 bg-slate-900/80 border border-slate-800 rounded-xl p-3 flex flex-col min-h-0 shadow-lg">
         <h2 class="text-xs font-black text-blue-400 uppercase tracking-wider mb-1">
           Tipo de Atendimento (% e Qtd)
         </h2>
