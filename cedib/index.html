@@ -201,20 +201,35 @@
 
     </div>
 
-    <!-- METADE INFERIOR (PRODUTIVIDADE ESTICADA + PIZZA) -->
+    <!-- METADE INFERIOR (PRODUTIVIDADE EMPILHADA + ORIGEM + PIZZA) -->
     <div class="grid grid-cols-12 gap-3 min-h-0">
       
-      <!-- RETÂNGULO VERMELHO INFERIOR: GRÁFICO DE PRODUTIVIDADE ESTICADO ATÉ O CANTO ESQUERDO (6 Colunas) -->
-      <div class="col-span-6 bg-slate-900/80 border border-slate-800 rounded-xl p-3 flex flex-col min-h-0 shadow-lg">
-        <h2 class="text-xs font-black text-blue-400 uppercase tracking-wider mb-1">
-          Produtividade por Atendente / Guichê
-        </h2>
-        <div class="flex-1 w-full min-h-0 relative">
-          <canvas id="chartProdutividade"></canvas>
+      <!-- WRAPPER PARA OS DOIS GRÁFICOS EMPILHADOS (6 Colunas no total, mantendo a largura) -->
+      <div class="col-span-6 flex flex-col gap-3 min-h-0">
+        
+        <!-- GRÁFICO: PRODUTIVIDADE ATENDENTES (Metade de cima) -->
+        <div class="flex-1 bg-slate-900/80 border border-slate-800 rounded-xl p-3 flex flex-col min-h-0 shadow-lg">
+          <h2 class="text-xs font-black text-blue-400 uppercase tracking-wider mb-1">
+            Produtividade por Atendente / Guichê
+          </h2>
+          <div class="flex-1 w-full min-h-0 relative">
+            <canvas id="chartProdutividade"></canvas>
+          </div>
         </div>
+
+        <!-- GRÁFICO: PRODUTIVIDADE CONFERENTES (Metade de baixo) -->
+        <div class="flex-1 bg-slate-900/80 border border-slate-800 rounded-xl p-3 flex flex-col min-h-0 shadow-lg">
+          <h2 class="text-xs font-black text-blue-400 uppercase tracking-wider mb-1">
+            Produtividade dos Conferentes
+          </h2>
+          <div class="flex-1 w-full min-h-0 relative">
+            <canvas id="chartProdutividadeConferentes"></canvas>
+          </div>
+        </div>
+
       </div>
 
-      <!-- NOVO: ORIGEM DOS ATENDIMENTOS - AGENDADOS x FALTOSOS (3 Colunas) -->
+      <!-- ORIGEM DOS ATENDIMENTOS - AGENDADOS x FALTOSOS (3 Colunas) -->
       <div class="col-span-3 bg-slate-900/80 border border-slate-800 rounded-xl p-3 flex flex-col min-h-0 shadow-lg">
         <h2 class="text-xs font-black text-blue-400 uppercase tracking-wider mb-1">
           Origem dos Atendimentos

@@ -2,7 +2,7 @@ const SPREADSHEET_ID = '1hlQx9xTAIiQYwNzUG8qDIZNkGM_Ts0t0DGwkEBznXIs';
 const GVIZ_FORMULAS = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=FORMULAS`;
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw-bXcPWmDXLZOz6_x30gFGMjI0A1vrMhc4_opah8kJMY1zQNVktnaQkve5GXYhbc1Z/exec';
 
-let lineChart, barChart, pieChart, originChart;
+let lineChart, barChart, barChartConferentes, pieChart, originChart;
 let returnTimer = null;
 let secondsRemaining = 120;
 
@@ -152,7 +152,9 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('resize', () => {
     if (lineChart) lineChart.resize();
     if (barChart) barChart.resize();
+    if (barChartConferentes) barChartConferentes.resize();
     if (pieChart) pieChart.resize();
+    if (originChart) originChart.resize();
   });
 });
 
@@ -312,6 +314,31 @@ function initCharts() {
     }
   });
 
+  // NOVO: Gráfico de Produtividade dos Conferentes
+  const ctxBarConf = document.getElementById('chartProdutividadeConferentes').getContext('2d');
+  barChartConferentes = new Chart(ctxBarConf, {
+    type: 'bar',
+    data: { labels: [], datasets: [{ label: 'Pedidos', data: [], backgroundColor: '#2563eb', borderRadius: 6, borderSkipped: false, clip: false }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 22, bottom: 0 } },
+      plugins: {
+        legend: { display: false },
+        datalabels: {
+          color: (context) => {
+            const bg = context.dataset.backgroundColor;
+            const cor = Array.isArray(bg) ? bg[context.dataIndex] : bg;
+            return COR_PODIO_CLARAS.includes(cor) ? '#0b1120' : '#ffffff';
+          },
+          anchor: 'center', align: 'center', font: (context) => ({ weight: '900', size: getAdaptiveFontSize(context, 0.045, 11, 18) }) }
+      },
+      scales: {
+        x: { ticks: { autoSkip: false, minRotation: 0, maxRotation: 0, color: '#ffffff', font: { size: 11, weight: 'bold' } }, grid: { display: false } },
+        y: { grace: '25%', ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: '#1e293b' } }
+      }
+    }
+  });
+
   const ctxPie = document.getElementById('chartTipos').getContext('2d');
   pieChart = new Chart(ctxPie, {
     type: 'pie',
@@ -444,6 +471,29 @@ async function fetchData(force = false) {
     barChart.data.datasets[0].data = barData;
     barChart.data.datasets[0].backgroundColor = bgColors;
     barChart.update();
+
+    // --- NOVO: Ranking dos Conferentes (Colunas Z e AA) ---
+    const rankingConferentes = [];
+    for (let i = 1; i < rows.length; i++) {
+      const conferente = getDirectVal(rows, i, 25); // Z (index 25)
+      const qtd = parseFloat(getDirectVal(rows, i, 26)); // AA (index 26)
+      if (conferente && !isNaN(qtd)) rankingConferentes.push({ nome: conferente, qtd });
+    }
+    // Ordena do maior para o menor
+    rankingConferentes.sort((a, b) => (b.qtd - a.qtd) || String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
+
+    const barConfLabels = rankingConferentes.map(r => r.nome);
+    const barConfData = rankingConferentes.map(r => r.qtd);
+    const bgColorsConf = rankingConferentes.map(r => {
+      if (r.qtd <= 0) return COR_BARRA_PADRAO;
+      const posicao = rankingConferentes.findIndex(x => x.qtd === r.qtd) + 1;
+      return COR_PODIO[posicao] || COR_BARRA_PADRAO;
+    });
+    
+    barChartConferentes.data.labels = barConfLabels;
+    barChartConferentes.data.datasets[0].data = barConfData;
+    barChartConferentes.data.datasets[0].backgroundColor = bgColorsConf;
+    barChartConferentes.update();
 
     const pieLabels = [];
     const pieData = [];
