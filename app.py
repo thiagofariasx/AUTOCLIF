@@ -192,6 +192,30 @@ def get_kpi_recebimento():
         except Exception as e:
             print(f"Erro ao ler Macros M e N: {e}")
 
+        # PENDÊNCIA POR DATA (colunas X:Z -> DATA | QTD NOTAS | VOLUMES)
+        pendencia_por_data = []
+        try:
+            raw_hist = sheet_kpi.get('X1:Z200')
+            def _int(v):
+                try: return int(float(str(v).replace('.', '').replace(',', '.')))
+                except: return 0
+            for r in raw_hist:
+                if not r: continue
+                d = str(r[0]).strip()
+                try:
+                    dt = datetime.strptime(d, '%d/%m/%Y')   # ignora cabeçalho/linhas vazias
+                except ValueError:
+                    continue
+                pendencia_por_data.append({
+                    "data": d,
+                    "iso": dt.strftime('%Y-%m-%d'),
+                    "notas": _int(r[1]) if len(r) > 1 else 0,
+                    "volumes": _int(r[2]) if len(r) > 2 else 0
+                })
+            pendencia_por_data.sort(key=lambda x: x["iso"])
+        except Exception as e:
+            print(f"Erro ao ler Pendência por Data (X:Z): {e}")
+
         produtividade_enderecador = []
         try:
             raw_end = sheet_kpi.get('P2:R15')
@@ -230,6 +254,7 @@ def get_kpi_recebimento():
             "macro_notas": macro_notas,
             "produtividade_enderecador": produtividade_enderecador,
             "produtividade_conferente": produtividade_conferente,
+            "pendencia_por_data": pendencia_por_data,
             "ultima_atualizacao": ultima_atl
         })
     except Exception as e:
