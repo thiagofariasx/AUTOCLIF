@@ -95,13 +95,19 @@
         .stage.end  { --c: var(--end); }
 
 
-        /* ---------- Gráfico: pendência por data ---------- */
-        .hist-legend { display: flex; gap: 18px; font-size: 13px; font-weight: 600; color: var(--muted); }
-        .hist-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
-        #chartHist svg { width: 100%; height: auto; display: block; overflow: visible; }
-        #chartHist text { font-family: inherit; font-variant-numeric: tabular-nums; }
-        #chartHist .pt { cursor: default; transition: r .15s; }
-        #chartHist .pt:hover { r: 7; }
+        /* ---------- Gráfico: pendência por data (compacto) ---------- */
+        .card-hist { padding-top: 14px; padding-bottom: 12px; }
+        .card-hist .kpi-head { padding-bottom: 8px; margin-bottom: 8px; }
+        .card-hist .kpi-head h5 { font-size: 14px; }
+        .hist-old { font-size: 12px; font-weight: 600; color: var(--conf); background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.35); padding: 2px 10px; border-radius: 999px; }
+        .hist-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 32px; }
+        @media (max-width: 767px) { .hist-grid { grid-template-columns: 1fr; } }
+        .hist-lbl { font-size: 12px; font-weight: 700; letter-spacing: .3px; margin-bottom: 2px; }
+        .hist-lbl.n { color: var(--notas); } .hist-lbl.v { color: var(--volumes); }
+        .hist-svg { width: 100%; height: 118px; }
+        .hist-svg svg { display: block; width: 100%; height: 100%; }
+        .hist-svg text { font-family: inherit; font-variant-numeric: tabular-nums; }
+        .hist-svg .pt { cursor: default; }
 
         /* ---------- Listas (macro / endereçadores / conferentes) ---------- */
         .rank-title { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
@@ -284,18 +290,18 @@
             </div>
         </div>
 
-        <!-- LINHA 1.5: PENDÊNCIA POR DATA (gráfico de linha) -->
+        <!-- LINHA 1.5: PENDÊNCIA POR DATA (compacto: notas | volumes) -->
         <div class="row mb-4 g-4">
             <div class="col-12">
-                <div class="card-kpi">
+                <div class="card-kpi card-hist">
                     <div class="kpi-head">
                         <h5>PENDÊNCIA POR DATA <small>desde quando está parado</small></h5>
-                        <div class="hist-legend">
-                            <span><i style="background:var(--notas)"></i>Notas (eixo esq.)</span>
-                            <span><i style="background:var(--volumes)"></i>Volumes (eixo dir.)</span>
-                        </div>
+                        <span class="hist-old" id="histMaisAntiga" style="display:none"></span>
                     </div>
-                    <div id="chartHist"></div>
+                    <div class="hist-grid">
+                        <div><div class="hist-lbl n">NOTAS</div><div class="hist-svg" id="chartHistN"></div></div>
+                        <div><div class="hist-lbl v">VOLUMES</div><div class="hist-svg" id="chartHistV"></div></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -535,65 +541,54 @@
         }
 
 
-        /* ---------- gráfico de linha: pendência por data ---------- */
-        function escalaBonita(max) {
-            if (max <= 0) return 1;
-            const exp = Math.pow(10, Math.floor(Math.log10(max)));
-            const f = max / exp;
-            const n = f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10;
-            return n * exp;
+        /* ---------- gráfico de linha compacto: pendência por data ---------- */
+        function desenharMini(elId, dados, key, cor) {
+            const el = document.getElementById(elId);
+            const W = Math.max(el.clientWidth, 200), H = 118;
+            const padX = 30, T = 22, B = 22, ih = H - T - B, iw = W - padX * 2;
+            const max = Math.max(...dados.map(d => d[key]), 1) * 1.1;
+            const n = dados.length;
+            const x = i => n === 1 ? W / 2 : padX + (iw * i) / (n - 1);
+            const y = v => T + ih - (v / max) * ih;
+            const base = T + ih;
+            const gid = 'g' + elId;
+
+            let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">`;
+            s += `<defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${cor}" stop-opacity=".28"/><stop offset="1" stop-color="${cor}" stop-opacity="0"/></linearGradient></defs>`;
+            s += `<line x1="${padX - 14}" x2="${W - padX + 14}" y1="${base}" y2="${base}" stroke="rgba(255,255,255,.1)"/>`;
+
+            const pts = dados.map((d, i) => `${x(i)},${y(d[key])}`);
+            if (n > 1) {
+                s += `<polygon points="${x(0)},${base} ${pts.join(' ')} ${x(n - 1)},${base}" fill="url(#${gid})"/>`;
+                s += `<polyline points="${pts.join(' ')}" fill="none" stroke="${cor}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>`;
+            }
+            dados.forEach((d, i) => {
+                s += `<circle class="pt" cx="${x(i)}" cy="${y(d[key])}" r="3.8" fill="#111827" stroke="${cor}" stroke-width="2.2"><title>${esc(d.data)}: ${fmt(d[key])}</title></circle>`;
+                s += `<text x="${x(i)}" y="${y(d[key]) - 9}" text-anchor="middle" font-size="12" font-weight="700" fill="${cor}">${fmt(d[key])}</text>`;
+                s += `<text x="${x(i)}" y="${H - 6}" text-anchor="middle" font-size="11" fill="#b0b9c7">${esc(d.data.slice(0, 5))}</text>`;
+            });
+            el.innerHTML = s + '</svg>';
         }
 
         function renderizarHistorico() {
-            const el = document.getElementById('chartHist');
             const dados = (ultimosDados && ultimosDados.pendencia_por_data) || [];
-            if (!dados.length) { el.innerHTML = '<div class="rank-vazio">Sem pendências por data.</div>'; return; }
-
-            const W = 1000, H = 280, L = 56, R = 70, T = 28, B = 38;
-            const iw = W - L - R, ih = H - T - B;
-            const maxN = escalaBonita(Math.max(...dados.map(d => d.notas)));
-            const maxV = escalaBonita(Math.max(...dados.map(d => d.volumes)));
-            const n = dados.length;
-            const x = i => n === 1 ? L + iw / 2 : L + (iw * i) / (n - 1);
-            const yN = v => T + ih - (v / maxN) * ih;
-            const yV = v => T + ih - (v / maxV) * ih;
-            const CN = '#2dd4bf', CV = '#a78bfa';
-
-            let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Pendência por data">`;
-
-            // grade + eixos (4 divisões)
-            for (let k = 0; k <= 4; k++) {
-                const y = T + ih - (ih * k) / 4;
-                svg += `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" stroke="rgba(255,255,255,.07)"/>`;
-                svg += `<text x="${L - 10}" y="${y + 4}" text-anchor="end" font-size="12" fill="${CN}">${fmt(Math.round(maxN * k / 4))}</text>`;
-                svg += `<text x="${W - R + 10}" y="${y + 4}" text-anchor="start" font-size="12" fill="${CV}">${fmt(Math.round(maxV * k / 4))}</text>`;
+            const vazio = '<div class="rank-vazio" style="padding:30px 0">Sem pendências por data.</div>';
+            const chip = document.getElementById('histMaisAntiga');
+            if (!dados.length) {
+                document.getElementById('chartHistN').innerHTML = vazio;
+                document.getElementById('chartHistV').innerHTML = vazio;
+                chip.style.display = 'none';
+                return;
             }
+            desenharMini('chartHistN', dados, 'notas', '#2dd4bf');
+            desenharMini('chartHistV', dados, 'volumes', '#a78bfa');
 
-            // datas no eixo X
-            dados.forEach((d, i) => {
-                svg += `<text x="${x(i)}" y="${H - 12}" text-anchor="middle" font-size="12.5" fill="#b0b9c7">${esc(d.data.slice(0, 5))}</text>`;
-            });
-
-            const linha = (fn, key, cor) => {
-                const pts = dados.map((d, i) => `${x(i)},${fn(d[key])}`).join(' ');
-                let out = n > 1 ? `<polyline points="${pts}" fill="none" stroke="${cor}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>` : '';
-                dados.forEach((d, i) => {
-                    out += `<circle class="pt" cx="${x(i)}" cy="${fn(d[key])}" r="5" fill="#111827" stroke="${cor}" stroke-width="3"><title>${esc(d.data)}: ${fmt(d[key])} ${key}</title></circle>`;
-                });
-                return out;
-            };
-            svg += linha(yN, 'notas', CN) + linha(yV, 'volumes', CV);
-
-            // rótulos de valor (notas acima, volumes abaixo do ponto quando coincidem)
-            dados.forEach((d, i) => {
-                const yn = yN(d.notas), yv = yV(d.volumes);
-                const nAcima = yn <= yv;
-                svg += `<text x="${x(i)}" y="${nAcima ? yn - 12 : yn + 22}" text-anchor="middle" font-size="13" font-weight="700" fill="${CN}">${fmt(d.notas)}</text>`;
-                svg += `<text x="${x(i)}" y="${nAcima ? yv + 22 : yv - 12}" text-anchor="middle" font-size="13" font-weight="700" fill="${CV}">${fmt(d.volumes)}</text>`;
-            });
-
-            el.innerHTML = svg + '</svg>';
+            const [an, m, a] = dados[0].iso.split('-').map(Number);
+            const dias = Math.round((new Date().setHours(0,0,0,0) - new Date(an, m - 1, a).getTime()) / 86400000);
+            chip.innerText = `Mais antiga: ${dados[0].data.slice(0, 5)} · ${dias} ${dias === 1 ? 'dia' : 'dias'}`;
+            chip.style.display = dias > 0 ? '' : 'none';
         }
+        window.addEventListener('resize', () => { if (ultimosDados) renderizarHistorico(); });
 
         function renderizarListas() {
             if (!ultimosDados) return;
